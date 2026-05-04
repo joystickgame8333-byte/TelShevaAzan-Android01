@@ -33,8 +33,8 @@ public class MainActivity extends Activity {
     private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("Asia/Jerusalem");
     private static final int TEL_SHEVA_OFFSET_MINUTES = 2;
     private static final int DAYLIGHT_SAVING_OFFSET_MINUTES = 60;
-    private static final String APP_VERSION = "0.2.0";
-    private static final String APP_BUILD = "2";
+    private static final String APP_VERSION = "0.2.1";
+    private static final String APP_BUILD = "3";
     private static final String PREFS_NAME = "tel_sheva_azan_android";
     private static final String NIGHT_THEME_KEY = "night_theme";
     private static final String DAY_THEME_KEY = "day_theme";
@@ -108,15 +108,21 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.RIGHT);
-        root.setPadding(dp(16), dp(12), dp(16), dp(18));
+        root.setPadding(
+                dp(16),
+                dp(14) + systemBarHeight("status_bar_height"),
+                dp(16),
+                dp(22) + systemBarHeight("navigation_bar_height")
+        );
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT
         ));
 
-        quranVerse = label("إِنَّ ٱلصَّلَوٰةَ كَانَتْ عَلَى ٱلْمُؤْمِنِينَ كِتَـٰبًا مَّوْقُوتًا", 16, activeTheme.accent, Typeface.NORMAL);
+        quranVerse = label("إِنَّ ٱلصَّلَوٰةَ كَانَتْ عَلَى ٱلْمُؤْمِنِينَ كِتَـٰبًا مَّوْقُوتًا", 15, activeTheme.accent, Typeface.NORMAL);
         quranVerse.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-        quranVerse.setSingleLine(true);
+        quranVerse.setSingleLine(false);
+        quranVerse.setMaxLines(2);
         root.addView(quranVerse, fullWidth());
 
         quranSource = label("النساء ١٠٣", 12, activeTheme.secondary, Typeface.BOLD);
@@ -633,6 +639,12 @@ public class MainActivity extends Activity {
 
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private int systemBarHeight(String resourceName) {
+        int id = getResources().getIdentifier(resourceName, "dimen", "android");
+        if (id <= 0) return 0;
+        return getResources().getDimensionPixelSize(id);
     }
 
     private int c(int red, int green, int blue) {

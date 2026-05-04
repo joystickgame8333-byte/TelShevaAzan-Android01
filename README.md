@@ -1,6 +1,6 @@
 # TelShevaAzan Android
 
-Current app version: `0.2.0 (2)`
+Current app version: `0.2.1 (3)`
 
 تطبيق Android أولي لتل السبع، بنفس فكرة نسخة iPhone:
 

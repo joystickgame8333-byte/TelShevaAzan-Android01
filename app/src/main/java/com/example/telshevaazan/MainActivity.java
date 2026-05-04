@@ -1,6 +1,10 @@
 package com.example.telshevaazan;
 
 import android.app.Activity;
+import android.app.Dialog;
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -9,6 +13,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
+import android.view.Window;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -28,18 +33,33 @@ public class MainActivity extends Activity {
     private static final TimeZone TIME_ZONE = TimeZone.getTimeZone("Asia/Jerusalem");
     private static final int TEL_SHEVA_OFFSET_MINUTES = 2;
     private static final int DAYLIGHT_SAVING_OFFSET_MINUTES = 60;
+    private static final String APP_VERSION = "0.2.0";
+    private static final String APP_BUILD = "2";
+    private static final String PREFS_NAME = "tel_sheva_azan_android";
+    private static final String NIGHT_THEME_KEY = "night_theme";
+    private static final String DAY_THEME_KEY = "day_theme";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Map<String, Map<String, String>> schedule = new LinkedHashMap<>();
     private final String[] prayerOrder = {"fajr", "dhuhr", "asr", "maghrib", "isha"};
     private final String[] displayOrder = {"fajr", "sunrise", "dhuhr", "asr", "maghrib", "isha"};
 
+    private SharedPreferences preferences;
+    private VisualTheme activeTheme;
+    private TextView quranVerse;
+    private TextView quranSource;
+    private TextView versionLabel;
+    private TextView titleLabel;
     private TextView dateLabel;
+    private TextView nextPrayerCaption;
     private TextView nextPrayerName;
     private TextView nextPrayerTime;
     private TextView countdownLabel;
+    private TextView elapsedLabel;
     private TextView noteLabel;
+    private LinearLayout nextPanel;
     private LinearLayout timeList;
+    private Button themeButton;
     private Button previousButton;
     private Button todayButton;
     private Button nextButton;
@@ -51,11 +71,11 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        preferences = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         getWindow().getDecorView().setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         buildSchedule();
         selectedDateKey = defaultDateKey();
-        setContentView(createContent());
-        updateView();
+        rebuildContent();
 
         ticker = new Runnable() {
             @Override
@@ -73,38 +93,99 @@ public class MainActivity extends Activity {
         super.onDestroy();
     }
 
+    private void rebuildContent() {
+        activeTheme = selectedTheme();
+        applySystemBars();
+        setContentView(createContent());
+        updateView();
+    }
+
     private View createContent() {
         ScrollView scrollView = new ScrollView(this);
         scrollView.setFillViewport(true);
-        scrollView.setBackgroundColor(Color.rgb(244, 240, 232));
+        scrollView.setBackground(gradient(activeTheme.backgroundTop, activeTheme.backgroundBottom));
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(16), dp(18), dp(16), dp(28));
+        root.setGravity(Gravity.RIGHT);
+        root.setPadding(dp(16), dp(12), dp(16), dp(18));
         scrollView.addView(root, new ScrollView.LayoutParams(
                 ScrollView.LayoutParams.MATCH_PARENT,
                 ScrollView.LayoutParams.WRAP_CONTENT
         ));
 
-        TextView eyebrow = label("نموذج Android", 13, Color.rgb(10, 79, 73), Typeface.BOLD);
-        root.addView(eyebrow);
+        quranVerse = label("إِنَّ ٱلصَّلَوٰةَ كَانَتْ عَلَى ٱلْمُؤْمِنِينَ كِتَـٰبًا مَّوْقُوتًا", 16, activeTheme.accent, Typeface.NORMAL);
+        quranVerse.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        quranVerse.setSingleLine(true);
+        root.addView(quranVerse, fullWidth());
 
-        TextView title = label("أذان تل السبع", 40, Color.rgb(23, 32, 29), Typeface.BOLD);
-        title.setPadding(0, dp(2), 0, dp(6));
-        root.addView(title);
+        quranSource = label("النساء ١٠٣", 12, activeTheme.secondary, Typeface.BOLD);
+        root.addView(quranSource, fullWidth());
 
-        TextView subtitle = label("يعرض اليوم تلقائيًا حسب التوقيت الدهري للمسجد الأقصى مع فرق بئر السبع.", 14, Color.rgb(97, 112, 107), Typeface.NORMAL);
-        subtitle.setPadding(0, 0, 0, dp(14));
-        root.addView(subtitle);
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        headerRow.setPadding(0, dp(10), 0, dp(2));
+        root.addView(headerRow, fullWidth());
 
-        dateLabel = pill("--");
-        root.addView(dateLabel);
+        themeButton = smallButton(activeTheme.modeTitle + " · " + activeTheme.title);
+        themeButton.setOnClickListener(v -> showThemeDialog());
+        headerRow.addView(themeButton);
+
+        versionLabel = label("مواقيت محلية v" + APP_VERSION + " (" + APP_BUILD + ")", 12, activeTheme.accent, Typeface.BOLD);
+        headerRow.addView(versionLabel, weightedWidth());
+
+        titleLabel = label("أذان تل السبع", 40, activeTheme.primary, Typeface.BOLD);
+        titleLabel.setPadding(0, dp(4), 0, 0);
+        root.addView(titleLabel, fullWidth());
+
+        dateLabel = label("--", 15, activeTheme.secondary, Typeface.BOLD);
+        root.addView(dateLabel, fullWidth());
+
+        nextPanel = new LinearLayout(this);
+        nextPanel.setOrientation(LinearLayout.HORIZONTAL);
+        nextPanel.setGravity(Gravity.CENTER_VERTICAL);
+        nextPanel.setPadding(dp(14), dp(14), dp(14), dp(14));
+        nextPanel.setBackground(round(activeTheme.panel, dp(8), activeTheme.border));
+        LinearLayout.LayoutParams panelParams = fullWidth();
+        panelParams.setMargins(0, dp(12), 0, dp(10));
+        root.addView(nextPanel, panelParams);
+
+        LinearLayout leftPanel = new LinearLayout(this);
+        leftPanel.setOrientation(LinearLayout.VERTICAL);
+        leftPanel.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        nextPanel.addView(leftPanel, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        countdownLabel = label("--:--:--", 21, Color.WHITE, Typeface.BOLD);
+        countdownLabel.setGravity(Gravity.CENTER);
+        countdownLabel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        countdownLabel.setBackground(round(activeTheme.countdown, dp(8), 0));
+        leftPanel.addView(countdownLabel, wrapWidth());
+
+        elapsedLabel = label("تتحدث تلقائيًا", 13, activeTheme.secondary, Typeface.BOLD);
+        elapsedLabel.setPadding(0, dp(8), 0, 0);
+        leftPanel.addView(elapsedLabel, fullWidth());
+
+        LinearLayout rightPanel = new LinearLayout(this);
+        rightPanel.setOrientation(LinearLayout.VERTICAL);
+        rightPanel.setGravity(Gravity.RIGHT);
+        nextPanel.addView(rightPanel, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        nextPrayerCaption = label("الصلاة القادمة", 13, activeTheme.accent, Typeface.BOLD);
+        rightPanel.addView(nextPrayerCaption, fullWidth());
+
+        nextPrayerName = label("--", 44, activeTheme.primary, Typeface.BOLD);
+        rightPanel.addView(nextPrayerName, fullWidth());
+
+        nextPrayerTime = label("--:--", 46, activeTheme.accent, Typeface.BOLD);
+        nextPrayerTime.setTypeface(Typeface.DEFAULT_BOLD);
+        rightPanel.addView(nextPrayerTime, fullWidth());
 
         LinearLayout controls = new LinearLayout(this);
         controls.setOrientation(LinearLayout.HORIZONTAL);
         controls.setGravity(Gravity.RIGHT);
-        controls.setPadding(0, dp(12), 0, dp(14));
-        root.addView(controls);
+        controls.setPadding(0, 0, 0, dp(10));
+        root.addView(controls, fullWidth());
 
         nextButton = smallButton("اليوم التالي");
         nextButton.setOnClickListener(v -> moveDay(1));
@@ -122,40 +203,13 @@ public class MainActivity extends Activity {
         previousButton.setOnClickListener(v -> moveDay(-1));
         controls.addView(previousButton);
 
-        LinearLayout nextPanel = card();
-        nextPanel.setPadding(dp(18), dp(18), dp(18), dp(18));
-        root.addView(nextPanel);
-
-        nextPanel.addView(label("الصلاة القادمة", 13, Color.rgb(10, 79, 73), Typeface.BOLD));
-
-        nextPrayerName = label("--", 42, Color.rgb(23, 32, 29), Typeface.BOLD);
-        nextPrayerName.setPadding(0, dp(6), 0, 0);
-        nextPanel.addView(nextPrayerName);
-
-        nextPrayerTime = label("--:--", 56, Color.rgb(15, 118, 110), Typeface.BOLD);
-        nextPrayerTime.setPadding(0, dp(2), 0, dp(10));
-        nextPanel.addView(nextPrayerTime);
-
-        countdownLabel = label("--:--:--", 24, Color.WHITE, Typeface.BOLD);
-        countdownLabel.setGravity(Gravity.CENTER);
-        countdownLabel.setPadding(dp(16), dp(8), dp(16), dp(8));
-        countdownLabel.setBackground(round(Color.rgb(10, 79, 73), dp(8), 0));
-        nextPanel.addView(countdownLabel, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-        ));
-
-        noteLabel = label("القدس الدهري + دقيقتين لتل السبع + التوقيت الصيفي", 13, Color.rgb(97, 112, 107), Typeface.NORMAL);
-        noteLabel.setPadding(0, dp(12), 0, 0);
-        nextPanel.addView(noteLabel);
-
-        TextView listTitle = label("مواقيت اليوم", 20, Color.rgb(23, 32, 29), Typeface.BOLD);
-        listTitle.setPadding(0, dp(18), 0, dp(10));
-        root.addView(listTitle);
-
         timeList = new LinearLayout(this);
         timeList.setOrientation(LinearLayout.VERTICAL);
-        root.addView(timeList);
+        root.addView(timeList, fullWidth());
+
+        noteLabel = label("مواقيت تل السبع المحلية · تتحدث تلقائيًا", 14, activeTheme.accent, Typeface.BOLD);
+        noteLabel.setPadding(0, dp(8), 0, 0);
+        root.addView(noteLabel, fullWidth());
 
         return scrollView;
     }
@@ -166,7 +220,10 @@ public class MainActivity extends Activity {
             selectedDateKey = today;
         }
 
-        PrayerEvent next = nextPrayer(new Date());
+        Date now = new Date();
+        PrayerEvent next = nextPrayer(now);
+        PrayerEvent previous = selectedDateKey.equals(today) ? previousPrayer(now) : null;
+
         dateLabel.setText(formatLongDate(selectedDateKey));
         nextPrayerName.setText(next == null ? "--" : nameFor(next.key));
         nextPrayerTime.setText(next == null ? "--:--" : next.time);
@@ -179,8 +236,9 @@ public class MainActivity extends Activity {
             countdownLabel.setText(formatDuration(next.date.getTime() - System.currentTimeMillis()));
         }
 
+        elapsedLabel.setText(selectedDateKey.equals(today) ? elapsedText(previous, now) : "عرض تاريخ محدد");
         noteLabel.setText(selectedDateKey.equals(today)
-                ? "يعرض اليوم تلقائيًا ويتبدل عند منتصف الليل"
+                ? "مواقيت تل السبع المحلية · تتحدث تلقائيًا"
                 : "عرض تاريخ محدد للمراجعة");
 
         renderTimes(next == null ? "" : next.key);
@@ -193,22 +251,23 @@ public class MainActivity extends Activity {
         if (times == null) return;
 
         for (String key : displayOrder) {
+            boolean active = key.equals(activeKey);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setPadding(dp(14), dp(14), dp(14), dp(14));
-            row.setBackground(round(key.equals(activeKey) ? Color.rgb(237, 248, 244) : Color.WHITE, dp(8), key.equals(activeKey) ? Color.rgb(15, 118, 110) : Color.rgb(221, 213, 200)));
+            row.setPadding(dp(12), 0, dp(12), 0);
+            row.setBackground(round(active ? activeTheme.activeRow : activeTheme.row, dp(8), active ? activeTheme.activeBorder : activeTheme.rowBorder));
 
-            TextView time = label(times.get(key), 22, key.equals(activeKey) ? Color.rgb(15, 118, 110) : Color.rgb(23, 32, 29), Typeface.BOLD);
+            TextView time = label(times.get(key), 24, active ? activeTheme.accent : activeTheme.primary, Typeface.BOLD);
+            time.setTypeface(Typeface.DEFAULT_BOLD);
             row.addView(time);
 
-            TextView name = label(nameFor(key), 18, key.equals(activeKey) ? Color.rgb(15, 118, 110) : Color.rgb(97, 112, 107), Typeface.BOLD);
-            name.setGravity(Gravity.RIGHT);
-            row.addView(name, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            TextView name = label(nameFor(key), 22, active ? activeTheme.accent : activeTheme.secondary, Typeface.BOLD);
+            row.addView(name, weightedWidth());
 
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
+                    dp(58)
             );
             params.setMargins(0, 0, 0, dp(8));
             timeList.addView(row, params);
@@ -238,6 +297,30 @@ public class MainActivity extends Activity {
         return new PrayerEvent("fajr", times.get("fajr"), parseDate(selectedDateKey, times.get("fajr")));
     }
 
+    private PrayerEvent previousPrayer(Date now) {
+        Map<String, String> times = schedule.get(selectedDateKey);
+        if (times == null) return null;
+
+        PrayerEvent previous = null;
+        for (String key : prayerOrder) {
+            Date date = parseDate(selectedDateKey, times.get(key));
+            if (date == null) continue;
+            if (!selectedDateKey.equals(currentDateKey()) || !date.after(now)) {
+                previous = new PrayerEvent(key, times.get(key), date);
+            }
+        }
+
+        if (previous != null) {
+            return previous;
+        }
+
+        String previousDate = adjacentDate(-1);
+        if (previousDate == null) return null;
+        Map<String, String> previousTimes = schedule.get(previousDate);
+        if (previousTimes == null) return null;
+        return new PrayerEvent("isha", previousTimes.get("isha"), parseDate(previousDate, previousTimes.get("isha")));
+    }
+
     private void moveDay(int offset) {
         String nextDate = adjacentDate(offset);
         if (nextDate == null) return;
@@ -257,6 +340,10 @@ public class MainActivity extends Activity {
     private void updateButtons() {
         previousButton.setEnabled(adjacentDate(-1) != null);
         nextButton.setEnabled(adjacentDate(1) != null);
+        tintButton(previousButton, previousButton.isEnabled());
+        tintButton(nextButton, nextButton.isEnabled());
+        tintButton(todayButton, true);
+        tintButton(themeButton, true);
     }
 
     private String defaultDateKey() {
@@ -303,6 +390,20 @@ public class MainActivity extends Activity {
         return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds);
     }
 
+    private String elapsedText(PrayerEvent previous, Date now) {
+        if (previous == null || previous.date == null) {
+            return "تتحدث تلقائيًا";
+        }
+        long totalMinutes = Math.max(0, (now.getTime() - previous.date.getTime()) / 60000);
+        long hours = totalMinutes / 60;
+        long minutes = totalMinutes % 60;
+
+        if (hours > 0) {
+            return "مضى على " + nameFor(previous.key) + " " + hours + "س " + minutes + "د";
+        }
+        return "مضى على " + nameFor(previous.key) + " " + minutes + "د";
+    }
+
     private String nameFor(String key) {
         switch (key) {
             case "fajr":
@@ -319,6 +420,91 @@ public class MainActivity extends Activity {
                 return "العشاء";
             default:
                 return key;
+        }
+    }
+
+    private void showThemeDialog() {
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(16), dp(14), dp(16), dp(14));
+        panel.setBackground(round(activeTheme.panel, dp(8), activeTheme.border));
+        scrollView.addView(panel);
+
+        TextView title = label("اختيار الأنماط", 20, activeTheme.primary, Typeface.BOLD);
+        panel.addView(title, fullWidth());
+
+        addThemeSection(panel, "أنماط الليل", nightThemes(), true, dialog);
+        addThemeSection(panel, "أنماط النهار", dayThemes(), false, dialog);
+
+        dialog.setContentView(scrollView);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+        }
+        dialog.show();
+    }
+
+    private void addThemeSection(LinearLayout panel, String title, VisualTheme[] themes, boolean night, Dialog dialog) {
+        TextView header = label(title, 13, activeTheme.secondary, Typeface.BOLD);
+        header.setPadding(0, dp(14), 0, dp(4));
+        panel.addView(header, fullWidth());
+
+        String selected = night
+                ? preferences.getString(NIGHT_THEME_KEY, nightThemes()[0].id)
+                : preferences.getString(DAY_THEME_KEY, dayThemes()[0].id);
+
+        for (VisualTheme theme : themes) {
+            Button button = smallButton((theme.id.equals(selected) ? "✓ " : "") + theme.symbol + "  " + theme.title);
+            button.setGravity(Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+            button.setOnClickListener(v -> {
+                preferences.edit().putString(night ? NIGHT_THEME_KEY : DAY_THEME_KEY, theme.id).apply();
+                dialog.dismiss();
+                rebuildContent();
+            });
+            panel.addView(button, fullWidthWithBottomMargin(6));
+        }
+    }
+
+    private VisualTheme selectedTheme() {
+        boolean night = isSystemNight();
+        String id = preferences.getString(night ? NIGHT_THEME_KEY : DAY_THEME_KEY, night ? nightThemes()[0].id : dayThemes()[0].id);
+        VisualTheme[] themes = night ? nightThemes() : dayThemes();
+        for (VisualTheme theme : themes) {
+            if (theme.id.equals(id)) return theme;
+        }
+        return themes[0];
+    }
+
+    private boolean isSystemNight() {
+        int mode = getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+        return mode == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    private VisualTheme[] nightThemes() {
+        return new VisualTheme[]{
+                new VisualTheme("emerald", "زمرد هادئ", "ليل", "☾", c(5, 31, 30), c(18, 42, 32), c(20, 32, 31), c(22, 35, 33), c(45, 39, 19), c(125, 90, 32), c(42, 58, 55), c(52, 67, 64), c(67, 82, 78), c(122, 87, 33), Color.WHITE, c(155, 167, 164), c(244, 207, 109)),
+                new VisualTheme("midnight", "منتصف الليل", "ليل", "☽", c(6, 13, 25), c(13, 23, 42), c(15, 22, 36), c(17, 26, 44), c(27, 45, 74), c(78, 113, 170), c(42, 52, 70), c(40, 49, 64), c(53, 62, 79), c(50, 89, 137), Color.WHITE, c(155, 174, 204), c(157, 199, 255)),
+                new VisualTheme("old", "حالك قديم", "ليل", "●", c(3, 3, 3), c(17, 17, 17), c(22, 22, 22), c(24, 24, 24), c(36, 31, 20), c(134, 108, 50), c(55, 55, 55), c(38, 38, 38), c(54, 54, 54), c(96, 74, 34), Color.WHITE, c(168, 168, 168), c(229, 204, 134))
+        };
+    }
+
+    private VisualTheme[] dayThemes() {
+        return new VisualTheme[]{
+                new VisualTheme("gold", "ذهبي هادئ", "نهار", "☀", c(247, 243, 232), c(232, 240, 236), Color.WHITE, c(255, 252, 245), c(245, 239, 224), c(155, 112, 45), c(224, 216, 201), c(255, 249, 239), c(239, 232, 219), c(154, 106, 40), c(38, 31, 25), c(142, 129, 114), c(154, 106, 40)),
+                new VisualTheme("dawn", "ضحى", "نهار", "◌", c(244, 255, 248), c(226, 243, 235), Color.WHITE, c(249, 255, 252), c(232, 247, 239), c(61, 136, 112), c(207, 224, 216), c(241, 249, 245), c(228, 240, 234), c(43, 128, 106), c(23, 38, 33), c(105, 129, 119), c(43, 128, 106)),
+                new VisualTheme("sky", "سماء صافية", "نهار", "☁", c(239, 247, 255), c(231, 237, 247), Color.WHITE, c(249, 252, 255), c(229, 240, 255), c(74, 117, 169), c(210, 219, 232), c(241, 246, 252), c(228, 237, 248), c(67, 114, 165), c(24, 33, 45), c(109, 124, 145), c(67, 114, 165))
+        };
+    }
+
+    private void applySystemBars() {
+        getWindow().setStatusBarColor(activeTheme.backgroundTop);
+        getWindow().setNavigationBarColor(activeTheme.backgroundBottom);
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            getWindow().getDecorView().setSystemUiVisibility(isSystemNight() ? 0 : View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         }
     }
 
@@ -382,38 +568,39 @@ public class MainActivity extends Activity {
         textView.setTextColor(color);
         textView.setTypeface(Typeface.DEFAULT, style);
         textView.setGravity(Gravity.RIGHT);
+        textView.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END);
         textView.setIncludeFontPadding(true);
-        return textView;
-    }
-
-    private TextView pill(String text) {
-        TextView textView = label(text, 14, Color.rgb(10, 79, 73), Typeface.BOLD);
-        textView.setPadding(dp(12), dp(8), dp(12), dp(8));
-        textView.setBackground(round(Color.rgb(232, 243, 240), dp(30), 0));
         return textView;
     }
 
     private Button smallButton(String text) {
         Button button = new Button(this);
         button.setText(text);
-        button.setTextSize(12);
+        button.setTextSize(13);
         button.setAllCaps(false);
-        button.setTextColor(Color.rgb(23, 32, 29));
-        button.setBackground(round(Color.rgb(255, 249, 239), dp(8), Color.rgb(221, 213, 200)));
+        button.setGravity(Gravity.CENTER);
+        button.setMinHeight(0);
+        button.setMinWidth(0);
+        button.setPadding(dp(10), 0, dp(10), 0);
+        button.setTextColor(activeTheme.primary);
+        button.setBackground(round(activeTheme.control, dp(8), activeTheme.border));
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-                dp(42)
+                dp(44)
         );
         params.setMargins(dp(5), 0, 0, 0);
         button.setLayoutParams(params);
         return button;
     }
 
-    private LinearLayout card() {
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setBackground(round(Color.WHITE, dp(8), Color.rgb(221, 213, 200)));
-        return layout;
+    private void tintButton(Button button, boolean enabled) {
+        button.setAlpha(enabled ? 1f : 0.42f);
+        button.setTextColor(activeTheme.primary);
+        button.setBackground(round(activeTheme.control, dp(8), activeTheme.border));
+    }
+
+    private GradientDrawable gradient(int startColor, int endColor) {
+        return new GradientDrawable(GradientDrawable.Orientation.TR_BL, new int[]{startColor, endColor});
     }
 
     private GradientDrawable round(int color, int radius, int strokeColor) {
@@ -426,8 +613,30 @@ public class MainActivity extends Activity {
         return drawable;
     }
 
+    private LinearLayout.LayoutParams fullWidth() {
+        return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
+    private LinearLayout.LayoutParams fullWidthWithBottomMargin(int bottomDp) {
+        LinearLayout.LayoutParams params = fullWidth();
+        params.setMargins(0, 0, 0, dp(bottomDp));
+        return params;
+    }
+
+    private LinearLayout.LayoutParams weightedWidth() {
+        return new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+    }
+
+    private LinearLayout.LayoutParams wrapWidth() {
+        return new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    }
+
     private int dp(int value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private int c(int red, int green, int blue) {
+        return Color.rgb(red, green, blue);
     }
 
     private static class PrayerEvent {
@@ -439,6 +648,48 @@ public class MainActivity extends Activity {
             this.key = key;
             this.time = time;
             this.date = date;
+        }
+    }
+
+    private static class VisualTheme {
+        final String id;
+        final String title;
+        final String modeTitle;
+        final String symbol;
+        final int backgroundTop;
+        final int backgroundBottom;
+        final int panel;
+        final int row;
+        final int activeRow;
+        final int activeBorder;
+        final int border;
+        final int control;
+        final int controlPressed;
+        final int countdown;
+        final int primary;
+        final int secondary;
+        final int accent;
+        final int rowBorder;
+
+        VisualTheme(String id, String title, String modeTitle, String symbol, int backgroundTop, int backgroundBottom, int panel, int row, int activeRow, int activeBorder, int border, int control, int controlPressed, int countdown, int primary, int secondary, int accent) {
+            this.id = id;
+            this.title = title;
+            this.modeTitle = modeTitle;
+            this.symbol = symbol;
+            this.backgroundTop = backgroundTop;
+            this.backgroundBottom = backgroundBottom;
+            this.panel = panel;
+            this.row = row;
+            this.activeRow = activeRow;
+            this.activeBorder = activeBorder;
+            this.border = border;
+            this.control = control;
+            this.controlPressed = controlPressed;
+            this.countdown = countdown;
+            this.primary = primary;
+            this.secondary = secondary;
+            this.accent = accent;
+            this.rowBorder = border;
         }
     }
 }

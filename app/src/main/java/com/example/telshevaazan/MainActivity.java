@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
-import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -17,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
@@ -34,11 +34,10 @@ import android.hardware.SensorManager;
 
 import java.io.IOException;
 import java.util.Date;
-import java.util.Set;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.41";
-    private static final String APP_BUILD = "132";
+    private static final String APP_VERSION = "0.6.42";
+    private static final String APP_BUILD = "133";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -188,7 +187,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        root.setPadding(dp(12), dp(10) + systemBarHeight("status_bar_height"), dp(12), dp(10));
+        root.setPadding(
+                dp(12),
+                dp(8) + systemBarHeight("status_bar_height"),
+                dp(12),
+                dp(8) + systemBarHeight("navigation_bar_height")
+        );
         shell.addView(root, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         View content;
@@ -211,7 +215,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 break;
         }
         root.addView(content, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
-        root.addView(dock(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(76)));
+        root.addView(dock(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(64)));
 
         setContentView(shell);
         if (selectedTab == Tab.QIBLA) {
@@ -222,10 +226,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View scheduleContent() {
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
+        scroll.setClipToPadding(false);
 
         LinearLayout root = vertical();
         root.setGravity(Gravity.RIGHT);
-        root.setPadding(dp(4), 0, dp(4), dp(8));
+        root.setPadding(dp(2), 0, dp(2), dp(14));
         scroll.addView(root);
 
         currentTimeLabel = label("--:--:--", 18, theme.accent, Typeface.BOLD);
@@ -236,8 +241,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         dateLabel.setGravity(Gravity.CENTER);
         root.addView(dateLabel, fullWidth());
 
-        root.addView(nextPrayerCard(), fullWidthWithMargins(0, 10, 0, 10));
-        root.addView(dateControls(), fullWidthWithMargins(0, 0, 0, 8));
+        root.addView(nextPrayerCard(), fullWidthWithMargins(0, dp(8), 0, dp(8)));
+        root.addView(dateControls(), fullWidthWithMargins(0, 0, 0, dp(8)));
 
         rowsContainer = vertical();
         rowsContainer.setPadding(dp(7), dp(7), dp(7), dp(0));
@@ -301,6 +306,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.RIGHT);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
         row.addView(smallButton("اليوم التالي", v -> moveDay(1)));
         row.addView(smallButton("اليوم", v -> {
@@ -343,30 +349,44 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.setPadding(dp(11), 0, dp(11), 0);
         row.setBackground(round(active ? theme.activeRow : theme.row, 8, active ? theme.activeBorder : theme.border));
         row.setOnClickListener(v -> showPrayerDetails(item));
 
-        TextView time = label(item.time, 22, active ? theme.accent : theme.primaryText, Typeface.BOLD);
-        row.addView(time, wrap());
-
         LinearLayout text = vertical();
         text.setGravity(Gravity.RIGHT);
-        TextView name = label(item.title, 18, active ? theme.accent : theme.secondaryText, Typeface.BOLD);
+        text.setPadding(0, 0, dp(8), 0);
+        TextView name = label(item.title, 18, active ? theme.accent : theme.primaryText, Typeface.BOLD);
+        singleLine(name);
         text.addView(name, fullWidth());
-        TextView detail = label("الإقامة " + PrayerEngine.iqamaTime(item), 11, theme.secondaryText, Typeface.BOLD);
+        TextView detail = label(prayerDetailText(item), 11, theme.secondaryText, Typeface.BOLD);
+        singleLine(detail);
         if (active && next != null) {
-            detail.setText("متبقي " + next.key.targetLabel + " " + PrayerEngine.durationText(next.date.getTime() - now.getTime()));
+            detail.setText("متبقي " + next.key.targetLabel + " " + PrayerEngine.shortMinuteDuration(next.date.getTime() - now.getTime()));
         } else if (justPassed && previous != null) {
-            detail.setText("مضى على " + previous.title + " " + PrayerEngine.durationText(now.getTime() - previous.date.getTime()));
+            detail.setText("مضى على " + previous.title + " " + PrayerEngine.shortMinuteDuration(now.getTime() - previous.date.getTime()));
         }
         text.addView(detail, fullWidth());
-        row.addView(text, new LinearLayout.LayoutParams(0, dp(58), 1));
 
         TextView icon = label(item.key.iconLabel, 12, active ? theme.accent : theme.secondaryText, Typeface.BOLD);
         icon.setGravity(Gravity.CENTER);
-        row.addView(icon, new LinearLayout.LayoutParams(dp(54), dp(58)));
+        icon.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(58)));
+        row.addView(text, new LinearLayout.LayoutParams(0, dp(58), 1));
+
+        TextView time = label(item.time, 22, active ? theme.accent : theme.primaryText, Typeface.BOLD);
+        time.setGravity(Gravity.CENTER);
+        time.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        row.addView(time, new LinearLayout.LayoutParams(dp(86), dp(58)));
         return row;
+    }
+
+    private String prayerDetailText(PrayerTime item) {
+        if (item.key == PrayerKey.SUNRISE) {
+            return "وقت الشروق";
+        }
+        return "الإقامة " + PrayerEngine.iqamaTime(item);
     }
 
     private String liveStatusText(PrayerTime next) {
@@ -403,7 +423,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         root.addView(panel("صوت الأذان", soundOptions()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("الصلوات التي يصدر لها الأذان", prayerToggles()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("أنماط التطبيق", themeChoices()), fullWidthWithMargins(0, 0, 0, 88));
+        root.addView(panel("أنماط التطبيق", themeChoices()), fullWidthWithMargins(0, 0, 0, dp(16)));
         return scroll;
     }
 
@@ -459,6 +479,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View themeChoices() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.HORIZONTAL);
+        root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         root.setGravity(Gravity.TOP);
         root.addView(themeColumn("نهاري", AppTheme.dayChoices()), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         root.addView(themeColumn("ليلي", AppTheme.nightChoices()), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -504,7 +525,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         root.addView(panel("ختمة مصغرة", miniKhatmahPanel()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("وقت الأذكار", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("نوع الذكر", nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("وقت الهدوء", quietOptions()), fullWidthWithMargins(0, 0, 0, 88));
+        root.addView(panel("وقت الهدوء", quietOptions()), fullWidthWithMargins(0, 0, 0, dp(16)));
         return scroll;
     }
 
@@ -537,6 +558,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         ), fullWidthWithMargins(0, 0, 0, 8));
         LinearLayout choices = new LinearLayout(this);
         choices.setOrientation(LinearLayout.HORIZONTAL);
+        choices.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         choices.addView(choiceButton("نصف صفحة", "halfPage".equals(portion), () -> setMiniKhatmahPortion("halfPage")), new LinearLayout.LayoutParams(0, dp(42), 1));
         choices.addView(choiceButton("صفحة يوميًا", "fullPage".equals(portion), () -> setMiniKhatmahPortion("fullPage")), new LinearLayout.LayoutParams(0, dp(42), 1));
         root.addView(choices, fullWidthWithMargins(0, 0, 0, 8));
@@ -776,9 +798,10 @@ public class MainActivity extends Activity implements SensorEventListener {
     private LinearLayout dock() {
         LinearLayout dock = new LinearLayout(this);
         dock.setOrientation(LinearLayout.HORIZONTAL);
+        dock.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         dock.setGravity(Gravity.CENTER);
-        dock.setPadding(dp(6), dp(8), dp(6), dp(8));
-        dock.setBackground(round(theme.night ? Color.argb(112, 0, 0, 0) : Color.argb(176, 255, 255, 255), 26, theme.border));
+        dock.setPadding(dp(5), dp(6), dp(5), dp(6));
+        dock.setBackground(round(theme.night ? Color.argb(132, 0, 0, 0) : Color.argb(224, 255, 255, 255), 22, theme.border));
         addDockButton(dock, Tab.RADIO);
         addDockButton(dock, Tab.QIBLA);
         addDockButton(dock, Tab.SCHEDULE);
@@ -789,13 +812,14 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private void addDockButton(LinearLayout dock, Tab tab) {
         boolean selected = selectedTab == tab;
-        Button button = new Button(this);
-        button.setAllCaps(false);
+        TextView button = label(tab.title, selected ? 11 : 10, selected ? Color.WHITE : theme.secondaryText, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        button.setSingleLine(true);
+        button.setEllipsize(TextUtils.TruncateAt.END);
         button.setText(tab.title);
-        button.setTextSize(selected ? 12 : 10);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        button.setTextColor(selected ? Color.WHITE : theme.secondaryText);
-        button.setBackground(round(selected ? theme.accent : Color.TRANSPARENT, selected ? 20 : 14, Color.TRANSPARENT));
+        button.setPadding(dp(2), 0, dp(2), 0);
+        button.setBackground(round(selected ? theme.accent : Color.TRANSPARENT, selected ? 18 : 12, Color.TRANSPARENT));
         button.setOnClickListener(v -> {
             selectedTab = tab;
             rebuildContent();
@@ -807,16 +831,21 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        TextView iconView = label(icon, 13, theme.accent, Typeface.BOLD);
-        iconView.setGravity(Gravity.CENTER);
-        iconView.setBackground(round(theme.control, 8, theme.border));
-        row.addView(iconView, new LinearLayout.LayoutParams(dp(48), dp(42)));
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        row.setPadding(0, 0, 0, dp(12));
+
         LinearLayout text = vertical();
-        TextView titleView = label(title, 33, theme.primaryText, Typeface.BOLD);
+        TextView titleView = label(title, 30, theme.primaryText, Typeface.BOLD);
         text.addView(titleView, fullWidth());
-        TextView subtitleView = label(subtitle, 12, theme.accent, Typeface.BOLD);
+        TextView subtitleView = label(subtitle, 13, theme.accent, Typeface.BOLD);
         text.addView(subtitleView, fullWidth());
         row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        TextView iconView = label(icon, 12, theme.accent, Typeface.BOLD);
+        iconView.setGravity(Gravity.CENTER);
+        iconView.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        iconView.setBackground(round(theme.control, 8, theme.border));
+        row.addView(iconView, new LinearLayout.LayoutParams(dp(54), dp(42)));
         return row;
     }
 
@@ -834,21 +863,30 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View togglePanel(String title, String subtitle, boolean on, Runnable action) {
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.setPadding(dp(10), dp(11), dp(10), dp(11));
         row.setBackground(round(on ? theme.activeRow : theme.row, 8, on ? theme.activeBorder : theme.border));
         row.setOnClickListener(v -> action.run());
 
-        TextView switchView = label(on ? "تشغيل" : "إيقاف", 12, on ? Color.WHITE : theme.secondaryText, Typeface.BOLD);
-        switchView.setGravity(Gravity.CENTER);
-        switchView.setBackground(round(on ? theme.accent : theme.control, 20, theme.border));
-        row.addView(switchView, new LinearLayout.LayoutParams(dp(76), dp(34)));
-
         LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
         TextView titleView = label(title, 15, on ? theme.accent : theme.primaryText, Typeface.BOLD);
+        singleLine(titleView);
         text.addView(titleView, fullWidth());
         TextView subtitleView = label(subtitle, 11, theme.secondaryText, Typeface.BOLD);
+        singleLine(subtitleView);
         text.addView(subtitleView, fullWidth());
         row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        TextView switchView = label(on ? "تشغيل" : "إيقاف", 12, on ? Color.WHITE : theme.secondaryText, Typeface.BOLD);
+        switchView.setGravity(Gravity.CENTER);
+        switchView.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        switchView.setSingleLine(true);
+        switchView.setIncludeFontPadding(false);
+        switchView.setBackground(round(on ? theme.accent : theme.control, 18, theme.border));
+        LinearLayout.LayoutParams switchParams = new LinearLayout.LayoutParams(dp(88), dp(36));
+        switchParams.setMargins(dp(8), 0, 0, 0);
+        row.addView(switchView, switchParams);
         return row;
     }
 
@@ -856,16 +894,23 @@ public class MainActivity extends Activity implements SensorEventListener {
         boolean selected = value.equals(selectedValue);
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
         row.setPadding(dp(10), dp(10), dp(10), dp(10));
         row.setBackground(round(selected ? theme.activeRow : theme.row, 8, selected ? theme.activeBorder : theme.border));
         row.setOnClickListener(v -> action.run());
+        LinearLayout text = vertical();
+        TextView titleView = label(title, 14, selected ? theme.accent : theme.primaryText, Typeface.BOLD);
+        singleLine(titleView);
+        text.addView(titleView, fullWidth());
+        TextView subtitleView = label(subtitle, 11, theme.secondaryText, Typeface.BOLD);
+        singleLine(subtitleView);
+        text.addView(subtitleView, fullWidth());
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
         TextView mark = label(selected ? "✓" : "•", 18, selected ? theme.accent : theme.secondaryText, Typeface.BOLD);
         mark.setGravity(Gravity.CENTER);
-        row.addView(mark, new LinearLayout.LayoutParams(dp(32), dp(48)));
-        LinearLayout text = vertical();
-        text.addView(label(title, 14, selected ? theme.accent : theme.primaryText, Typeface.BOLD), fullWidth());
-        text.addView(label(subtitle, 11, theme.secondaryText, Typeface.BOLD), fullWidth());
-        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        mark.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
+        row.addView(mark, new LinearLayout.LayoutParams(dp(36), dp(48)));
         return row;
     }
 
@@ -877,6 +922,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setTextColor(selected ? Color.WHITE : theme.primaryText);
         button.setBackground(round(selected ? theme.accent : theme.control, 8, selected ? theme.activeBorder : theme.border));
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(6), 0, dp(6), 0);
         button.setOnClickListener(v -> action.run());
         return button;
     }
@@ -889,6 +939,11 @@ public class MainActivity extends Activity implements SensorEventListener {
         button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         button.setTextColor(theme.primaryText);
         button.setBackground(round(theme.control, 8, theme.border));
+        button.setMinWidth(0);
+        button.setMinimumWidth(0);
+        button.setMinHeight(0);
+        button.setMinimumHeight(0);
+        button.setPadding(dp(10), 0, dp(10), 0);
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(42));
         params.setMargins(dp(5), 0, 0, 0);
@@ -910,15 +965,21 @@ public class MainActivity extends Activity implements SensorEventListener {
         view.setTextColor(color);
         view.setTypeface(Typeface.DEFAULT, style);
         view.setGravity(Gravity.RIGHT);
-        view.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END);
+        view.setTextDirection(View.TEXT_DIRECTION_RTL);
+        view.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         view.setIncludeFontPadding(true);
         return view;
+    }
+
+    private void singleLine(TextView view) {
+        view.setSingleLine(true);
+        view.setEllipsize(TextUtils.TruncateAt.END);
     }
 
     private LinearLayout pageRoot() {
         LinearLayout root = vertical();
         root.setGravity(Gravity.RIGHT);
-        root.setPadding(dp(6), 0, dp(6), dp(8));
+        root.setPadding(dp(4), 0, dp(4), dp(18));
         return root;
     }
 
@@ -1032,8 +1093,13 @@ public class MainActivity extends Activity implements SensorEventListener {
         root.addView(label("صلاة " + prayer.title, 30, theme.primaryText, Typeface.BOLD), fullWidth());
         LinearLayout times = new LinearLayout(this);
         times.setOrientation(LinearLayout.HORIZONTAL);
-        times.addView(detailTile("الإقامة", PrayerEngine.iqamaTime(prayer), true), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        times.addView(detailTile("الأذان", prayer.time, false), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        times.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        if (prayer.key == PrayerKey.SUNRISE) {
+            times.addView(detailTile("وقت الشروق", prayer.time, true), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        } else {
+            times.addView(detailTile("الإقامة", PrayerEngine.iqamaTime(prayer), true), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            times.addView(detailTile("الأذان", prayer.time, false), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        }
         root.addView(times, fullWidthWithMargins(0, dp(14), 0, dp(12)));
         String status = prayer.date.after(now)
                 ? "متبقي " + prayer.key.targetLabel + " " + PrayerEngine.durationText(prayer.date.getTime() - now.getTime())

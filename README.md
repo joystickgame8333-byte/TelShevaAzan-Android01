@@ -1,6 +1,6 @@
 # TelShevaAzan Android
 
-Current app version: `0.6.41 (132)`
+Current app version: `0.6.42 (133)`
 
 تطبيق Android عربي لتل السبع/النقب، مبني Native Java، ومجهز ليقترب من نسخة iPhone الحالية:
 

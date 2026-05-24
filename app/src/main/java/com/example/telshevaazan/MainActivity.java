@@ -37,8 +37,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.53";
-    private static final String APP_BUILD = "144";
+    private static final String APP_VERSION = "0.6.54";
+    private static final String APP_BUILD = "145";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -952,58 +952,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                 }
         ), fullWidthWithMargins(0, 0, 0, 12));
 
-        root.addView(panel("ختمة مصغرة", miniKhatmahPanel()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("وقت الأذكار", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("نوع الذكر", nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, 12));
         root.addView(panel("وقت الهدوء", quietOptions()), fullWidthWithMargins(0, 0, 0, dp(16)));
         return scroll;
-    }
-
-    private View miniKhatmahPanel() {
-        LinearLayout root = vertical();
-        boolean enabled = prefs.getBoolean(SalatiSettings.KEY_MINI_KHATMAH_ENABLED, false);
-        String portion = prefs.getString(SalatiSettings.KEY_MINI_KHATMAH_PORTION, "halfPage");
-        long start = prefs.getLong(SalatiSettings.KEY_MINI_KHATMAH_START, 0);
-        int totalSteps = "fullPage".equals(portion) ? 604 : 1208;
-        int currentStep = 1;
-        if (start > 0) {
-            long days = Math.max(0, (System.currentTimeMillis() - start) / (24L * 60L * 60L * 1000L));
-            currentStep = (int) Math.min(totalSteps, days + 1);
-        }
-        int currentPage = "fullPage".equals(portion) ? currentStep : (int) Math.ceil(currentStep * 0.5);
-        int percent = (int) Math.round((currentStep * 100.0) / totalSteps);
-        root.addView(togglePanel(
-                enabled ? "الختمة تعمل بهدوء" : "تشغيل الختمة المصغرة",
-                enabled ? "صفحة " + currentPage + " • اليوم " + currentStep + " من " + totalSteps : "اختر نصف صفحة أو صفحة يوميًا",
-                enabled,
-                () -> {
-                    boolean next = !prefs.getBoolean(SalatiSettings.KEY_MINI_KHATMAH_ENABLED, false);
-                    SharedPreferences.Editor editor = prefs.edit().putBoolean(SalatiSettings.KEY_MINI_KHATMAH_ENABLED, next);
-                    if (next && prefs.getLong(SalatiSettings.KEY_MINI_KHATMAH_START, 0) == 0) {
-                        editor.putLong(SalatiSettings.KEY_MINI_KHATMAH_START, System.currentTimeMillis());
-                    }
-                    editor.apply();
-                    rebuildContent();
-                }
-        ), fullWidthWithMargins(0, 0, 0, 8));
-        LinearLayout choices = new LinearLayout(this);
-        choices.setOrientation(LinearLayout.HORIZONTAL);
-        choices.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
-        choices.addView(choiceButton("نصف صفحة", "halfPage".equals(portion), () -> setMiniKhatmahPortion("halfPage")), new LinearLayout.LayoutParams(0, dp(42), 1));
-        choices.addView(choiceButton("صفحة يوميًا", "fullPage".equals(portion), () -> setMiniKhatmahPortion("fullPage")), new LinearLayout.LayoutParams(0, dp(42), 1));
-        root.addView(choices, fullWidthWithMargins(0, 0, 0, 8));
-        TextView progress = label("التقدم " + percent + "%", 15, theme.accent, Typeface.BOLD);
-        root.addView(progress, fullWidth());
-        return root;
-    }
-
-    private void setMiniKhatmahPortion(String portion) {
-        SharedPreferences.Editor editor = prefs.edit().putString(SalatiSettings.KEY_MINI_KHATMAH_PORTION, portion);
-        if (prefs.getLong(SalatiSettings.KEY_MINI_KHATMAH_START, 0) == 0) {
-            editor.putLong(SalatiSettings.KEY_MINI_KHATMAH_START, System.currentTimeMillis());
-        }
-        editor.apply();
-        rebuildContent();
     }
 
     private View nafahatIntervalOptions() {

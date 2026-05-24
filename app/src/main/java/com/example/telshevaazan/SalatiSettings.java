@@ -14,9 +14,6 @@ final class SalatiSettings {
     static final String KEY_NAFAHAT_INTERVAL = "prayer_notifications_nafahat_interval_minutes";
     static final String KEY_NAFAHAT_TEXT = "prayer_notifications_nafahat_text";
     static final String KEY_NAFAHAT_QUIET = "prayer_notifications_nafahat_quiet_window";
-    static final String KEY_MINI_KHATMAH_ENABLED = "adhkar.miniKhatmah.enabled";
-    static final String KEY_MINI_KHATMAH_PORTION = "adhkar.miniKhatmah.dailyPortion";
-    static final String KEY_MINI_KHATMAH_START = "adhkar.miniKhatmah.startDate";
     static final String SOUND_ADHAN = "mohamedJaziAdhan";
     static final String SOUND_ADHAN_SECOND = "bundledAdhan";
     static final String SOUND_ADHAN_FIRST = "originalAdhan";

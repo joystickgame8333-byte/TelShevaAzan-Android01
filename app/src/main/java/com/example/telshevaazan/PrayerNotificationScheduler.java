@@ -28,7 +28,7 @@ final class PrayerNotificationScheduler {
     static final String EXTRA_SOUND = "sound";
     static final String KIND_ADHAN = "adhan";
     static final String KIND_NAFAHAT = "nafahat";
-    static final String CHANNEL_ADHAN = "salati_prayers";
+    static final String CHANNEL_ADHAN = "salati_prayers_clean";
     static final String CHANNEL_NAFAHAT = "salati_adhkar";
     private static final int MAX_PENDING = 60;
 
@@ -140,23 +140,26 @@ final class PrayerNotificationScheduler {
             return;
         }
 
-        AudioAttributes attributes = new AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build();
-
         if (KIND_NAFAHAT.equals(kind)) {
+            AudioAttributes nafahatAttributes = new AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build();
             NotificationChannel nafahat = new NotificationChannel(channelId(kind, sound), "أذكار ونفحات", NotificationManager.IMPORTANCE_DEFAULT);
             nafahat.setDescription("تذكير روحي خفيف خلال اليوم");
-            nafahat.setSound(soundUri(context, "nafahat2"), attributes);
+            nafahat.setSound(soundUri(context, "nafahat2"), nafahatAttributes);
             manager.createNotificationChannel(nafahat);
             return;
         }
 
         String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN_SECOND : sound;
+        AudioAttributes adhanAttributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
         NotificationChannel adhan = new NotificationChannel(channelId(kind, resolvedSound), "تنبيهات الأذان", NotificationManager.IMPORTANCE_HIGH);
         adhan.setDescription("تنبيهات مواقيت الصلاة المختارة");
-        adhan.setSound(soundUri(context, resolvedSound), attributes);
+        adhan.setSound(soundUri(context, resolvedSound), adhanAttributes);
         manager.createNotificationChannel(adhan);
     }
 

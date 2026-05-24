@@ -27,6 +27,7 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -36,8 +37,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.51";
-    private static final String APP_BUILD = "142";
+    private static final String APP_VERSION = "0.6.52";
+    private static final String APP_BUILD = "143";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -549,10 +550,10 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         LinearLayout text = vertical();
         text.setGravity(Gravity.RIGHT);
-        TextView title = label("التنبيه", 34, theme.primaryText, Typeface.BOLD);
+        TextView title = label("التنبيه", 30, theme.primaryText, Typeface.BOLD);
         title.setIncludeFontPadding(false);
         text.addView(title, fullWidth());
-        TextView subtitle = label("الأذان والأنماط", 15, theme.accent, Typeface.BOLD);
+        TextView subtitle = label("الأذان والأنماط", 13, theme.accent, Typeface.BOLD);
         subtitle.setIncludeFontPadding(false);
         text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
         row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -590,7 +591,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         ImageView icon = iconImage(iconResource, selected ? theme.primaryText : theme.secondaryText, 20);
         item.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(36)));
-        TextView label = label(title, 15, selected ? theme.primaryText : theme.secondaryText, Typeface.BOLD);
+        TextView label = label(title, 14, selected ? theme.primaryText : theme.secondaryText, Typeface.BOLD);
         label.setGravity(Gravity.CENTER);
         label.setIncludeFontPadding(false);
         item.addView(label, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -618,10 +619,10 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         LinearLayout text = vertical();
         text.setGravity(Gravity.RIGHT);
-        TextView title = label("تشغيل تنبيهات الأذان", 20, theme.primaryText, Typeface.BOLD);
+        TextView title = label("تشغيل تنبيهات الأذان", 17, theme.primaryText, Typeface.BOLD);
         title.setIncludeFontPadding(false);
         text.addView(title, fullWidth());
-        TextView subtitle = label(SalatiSettings.adhanEnabled(this) ? "التنبيهات مفعّلة للصلوات المختارة" : "التنبيهات غير مفعلة", 13, theme.secondaryText, Typeface.BOLD);
+        TextView subtitle = label(SalatiSettings.adhanEnabled(this) ? "التنبيهات مفعّلة للصلوات المختارة" : "التنبيهات غير مفعلة", 12, theme.secondaryText, Typeface.BOLD);
         text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
         row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         return row;
@@ -651,7 +652,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
         ImageView icon = iconImage(iconResource, theme.accent, 22);
         titleRow.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
-        TextView titleView = label(title, 16, theme.accent, Typeface.BOLD);
+        TextView titleView = label(title, 14, theme.accent, Typeface.BOLD);
         titleView.setGravity(Gravity.RIGHT);
         titleRow.addView(titleView, wrap());
         header.addView(titleRow, wrap());
@@ -663,9 +664,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View soundOptions() {
         LinearLayout list = vertical();
         String selected = SalatiSettings.adhanSound(this);
-        list.addView(soundOptionButton("الأذان الثاني", R.drawable.ic_notification_volume, SalatiSettings.SOUND_ADHAN_SECOND, selected, () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_SECOND)), fullWidth());
-        list.addView(soundDivider(), fullWidth());
         list.addView(soundOptionButton("الأذان الأول", R.drawable.ic_notification_volume, SalatiSettings.SOUND_ADHAN_FIRST, selected, () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_FIRST)), fullWidth());
+        list.addView(soundDivider(), fullWidth());
+        list.addView(soundOptionButton("الأذان الثاني", R.drawable.ic_notification_volume, SalatiSettings.SOUND_ADHAN_SECOND, selected, () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_SECOND)), fullWidth());
         list.addView(soundDivider(), fullWidth());
         list.addView(soundOptionButton("رسالة إشعار", R.drawable.ic_tab_sparkle, SalatiSettings.SOUND_SOFT, selected, () -> setAdhanSound(SalatiSettings.SOUND_SOFT)), fullWidth());
         list.addView(soundDivider(), fullWidth());
@@ -686,7 +687,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         ImageView icon = iconImage(selected ? R.drawable.ic_notification_check : iconResource, selected ? theme.accent : theme.secondaryText, 22);
         row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(56)));
-        TextView text = label(title, 18, selected ? theme.accent : theme.primaryText, Typeface.BOLD);
+        TextView text = label(title, 16, selected ? theme.accent : theme.primaryText, Typeface.BOLD);
         text.setGravity(Gravity.RIGHT);
         text.setIncludeFontPadding(false);
         row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -709,16 +710,22 @@ public class MainActivity extends Activity implements SensorEventListener {
         button.setGravity(Gravity.CENTER_VERTICAL);
         button.setPadding(dp(16), dp(12), dp(16), dp(12));
         button.setBackground(round(theme.accent, 10, theme.activeBorder));
-        button.setOnClickListener(v -> sendPreviewNotification());
+        button.setOnClickListener(v -> {
+            v.animate().alpha(0.72f).setDuration(80)
+                    .withEndAction(() -> v.animate().alpha(1f).setDuration(180).start())
+                    .start();
+            Toast.makeText(this, "سيصدر اختبار الأذان بعد 5 ثواني", Toast.LENGTH_SHORT).show();
+            sendPreviewNotification();
+        });
 
         ImageView icon = iconImage(R.drawable.ic_notification_volume, AppTheme.withAlpha(theme.primaryText, 0.26), 26);
         button.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(52)));
         LinearLayout text = vertical();
         text.setGravity(Gravity.RIGHT);
-        TextView title = label("اختبار الأذان بعد 5 ثواني", 18, theme.primaryText, Typeface.BOLD);
+        TextView title = label("اختبار الأذان بعد 5 ثواني", 16, theme.primaryText, Typeface.BOLD);
         title.setIncludeFontPadding(false);
         text.addView(title, fullWidth());
-        TextView subtitle = label("اقفل الشاشة بسرعة وتأكد من الصوت المختار", 12, AppTheme.withAlpha(theme.primaryText, 0.62), Typeface.BOLD);
+        TextView subtitle = label("اقفل الشاشة بسرعة وتأكد من الصوت المختار", 11, AppTheme.withAlpha(theme.primaryText, 0.62), Typeface.BOLD);
         text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
         button.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         return button;
@@ -768,11 +775,11 @@ public class MainActivity extends Activity implements SensorEventListener {
             rebuildContent();
         });
         row.addView(switchPill(enabled), new LinearLayout.LayoutParams(dp(72), dp(42)));
-        TextView timeView = label(time, 20, theme.secondaryText, Typeface.BOLD);
+        TextView timeView = label(time, 18, theme.secondaryText, Typeface.BOLD);
         timeView.setGravity(Gravity.RIGHT);
         timeView.setIncludeFontPadding(false);
         row.addView(timeView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        TextView title = label(key.title, 20, theme.primaryText, Typeface.BOLD);
+        TextView title = label(key.title, 18, theme.primaryText, Typeface.BOLD);
         title.setGravity(Gravity.RIGHT);
         title.setIncludeFontPadding(false);
         row.addView(title, new LinearLayout.LayoutParams(dp(104), LinearLayout.LayoutParams.WRAP_CONTENT));
@@ -794,15 +801,15 @@ public class MainActivity extends Activity implements SensorEventListener {
         panel.setPadding(dp(16), dp(16), dp(16), dp(16));
         panel.setBackground(round(theme.panel, 12, theme.border));
         elevate(panel, 2);
-        TextView header = label("أنماط التطبيق", 17, theme.accent, Typeface.BOLD);
+        TextView header = label("أنماط التطبيق", 15, theme.accent, Typeface.BOLD);
         panel.addView(header, fullWidthWithMargins(0, 0, 0, dp(14)));
 
         LinearLayout headings = new LinearLayout(this);
         headings.setOrientation(LinearLayout.HORIZONTAL);
         headings.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        TextView day = label("نهاري", 15, theme.accent, Typeface.BOLD);
+        TextView day = label("نهاري", 14, theme.accent, Typeface.BOLD);
         day.setGravity(Gravity.CENTER);
-        TextView night = label("ليلي", 15, theme.accent, Typeface.BOLD);
+        TextView night = label("ليلي", 14, theme.accent, Typeface.BOLD);
         night.setGravity(Gravity.CENTER);
         headings.addView(day, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
         headings.addView(night, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
@@ -823,7 +830,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             }
             panel.addView(row, fullWidthWithMargins(0, 0, 0, dp(12)));
         }
-        TextView footer = label("اختر نمطًا نهاريًا ونمطًا ليليًا، والتطبيق يبدّل بينهم تلقائيًا حسب الوقت.", 13, theme.secondaryText, Typeface.BOLD);
+        TextView footer = label("اختر نمطًا نهاريًا ونمطًا ليليًا، والتطبيق يبدّل بينهم تلقائيًا حسب الوقت.", 12, theme.secondaryText, Typeface.BOLD);
         footer.setGravity(Gravity.CENTER);
         panel.addView(footer, fullWidth());
         return panel;
@@ -865,10 +872,10 @@ public class MainActivity extends Activity implements SensorEventListener {
         mark.setGravity(Gravity.CENTER);
         text.addView(mark, new LinearLayout.LayoutParams(dp(30), dp(42)));
         LinearLayout labels = vertical();
-        TextView title = label(choice.title, 14, theme.primaryText, Typeface.BOLD);
+        TextView title = label(choice.title, 13, theme.primaryText, Typeface.BOLD);
         singleLine(title);
         labels.addView(title, fullWidth());
-        TextView subtitle = label(choice.modeTitle, 10, theme.secondaryText, Typeface.BOLD);
+        TextView subtitle = label(choice.modeTitle, 9, theme.secondaryText, Typeface.BOLD);
         singleLine(subtitle);
         labels.addView(subtitle, fullWidth());
         text.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));

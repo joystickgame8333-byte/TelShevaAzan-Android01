@@ -36,8 +36,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.49";
-    private static final String APP_BUILD = "140";
+    private static final String APP_VERSION = "0.6.50";
+    private static final String APP_BUILD = "141";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -300,12 +300,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         View floorGlow = new View(this);
-        floorGlow.setBackgroundResource(R.drawable.hero_floor_glow);
+        floorGlow.setBackground(heroFloorFade());
         FrameLayout.LayoutParams floorGlowParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(118), Gravity.BOTTOM);
         card.addView(floorGlow, floorGlowParams);
 
         View textGlow = new View(this);
-        textGlow.setBackgroundResource(R.drawable.hero_text_glow);
+        textGlow.setBackground(heroTextFade());
         FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(322), dp(238), Gravity.RIGHT | Gravity.TOP);
         card.addView(textGlow, textGlowParams);
 
@@ -334,6 +334,48 @@ public class MainActivity extends Activity implements SensorEventListener {
         content.addView(elapsedLabel, new LinearLayout.LayoutParams(1, 1));
 
         return card;
+    }
+
+    private GradientDrawable heroTextFade() {
+        if (theme.night) {
+            return new GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    new int[]{
+                            Color.argb(0, 0, 0, 0),
+                            Color.argb(122, 0, 0, 0),
+                            Color.argb(214, 0, 0, 0)
+                    }
+            );
+        }
+        return new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{
+                        Color.argb(0, 242, 247, 250),
+                        Color.argb(156, 239, 244, 247),
+                        Color.argb(226, 238, 243, 246)
+                }
+        );
+    }
+
+    private GradientDrawable heroFloorFade() {
+        if (theme.night) {
+            return new GradientDrawable(
+                    GradientDrawable.Orientation.TOP_BOTTOM,
+                    new int[]{
+                            Color.argb(0, 0, 0, 0),
+                            Color.argb(62, 0, 0, 0),
+                            Color.argb(170, 0, 0, 0)
+                    }
+            );
+        }
+        return new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{
+                        Color.argb(0, 244, 248, 250),
+                        Color.argb(82, 242, 246, 248),
+                        Color.argb(184, 241, 246, 249)
+                }
+        );
     }
 
     private View dateControls() {

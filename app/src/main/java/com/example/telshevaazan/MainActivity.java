@@ -36,8 +36,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.48";
-    private static final String APP_BUILD = "139";
+    private static final String APP_VERSION = "0.6.49";
+    private static final String APP_BUILD = "140";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -306,8 +306,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         View textGlow = new View(this);
         textGlow.setBackgroundResource(R.drawable.hero_text_glow);
-        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(260), dp(158), Gravity.RIGHT | Gravity.TOP);
-        textGlowParams.setMargins(0, dp(24), dp(4), 0);
+        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(322), dp(238), Gravity.RIGHT | Gravity.TOP);
         card.addView(textGlow, textGlowParams);
 
         LinearLayout content = vertical();
@@ -442,7 +441,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private String prayerDetailText(PrayerTime item) {
         if (item.key == PrayerKey.SUNRISE) {
-            return "وقت الشروق";
+            return "وقت الشروق " + item.time;
         }
         return "الإقامة " + PrayerEngine.iqamaTime(item);
     }

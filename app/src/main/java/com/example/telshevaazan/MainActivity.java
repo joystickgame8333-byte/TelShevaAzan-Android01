@@ -36,8 +36,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.47";
-    private static final String APP_BUILD = "138";
+    private static final String APP_VERSION = "0.6.48";
+    private static final String APP_BUILD = "139";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -293,27 +293,27 @@ public class MainActivity extends Activity implements SensorEventListener {
         ImageView image = new ImageView(this);
         image.setImageResource(theme.night ? R.drawable.nabawi_night : R.drawable.nabawi_day);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(230)));
+        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         View overlay = new View(this);
-        overlay.setBackgroundColor(theme.night ? Color.argb(100, 0, 0, 0) : Color.argb(88, 255, 255, 255));
-        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(230)));
+        overlay.setBackgroundColor(theme.night ? Color.argb(92, 0, 0, 0) : Color.argb(44, 255, 255, 255));
+        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         View floorGlow = new View(this);
         floorGlow.setBackgroundResource(R.drawable.hero_floor_glow);
-        FrameLayout.LayoutParams floorGlowParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(128), Gravity.BOTTOM);
+        FrameLayout.LayoutParams floorGlowParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(118), Gravity.BOTTOM);
         card.addView(floorGlow, floorGlowParams);
 
         View textGlow = new View(this);
         textGlow.setBackgroundResource(R.drawable.hero_text_glow);
-        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(286), dp(172), Gravity.RIGHT | Gravity.TOP);
-        textGlowParams.setMargins(0, dp(18), 0, 0);
+        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(260), dp(158), Gravity.RIGHT | Gravity.TOP);
+        textGlowParams.setMargins(0, dp(24), dp(4), 0);
         card.addView(textGlow, textGlowParams);
 
         LinearLayout content = vertical();
         content.setGravity(Gravity.RIGHT);
         content.setPadding(dp(18), dp(18), dp(18), dp(12));
-        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(230)));
+        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         TextView caption = label("الصلاة القادمة", 13, theme.accent, Typeface.BOLD);
         content.addView(caption, fullWidth());
@@ -424,7 +424,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         text.addView(detail, fullWidth());
         row.addView(text, new LinearLayout.LayoutParams(0, dp(44), 1));
 
-        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.58), 22);
+        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.54), 21);
         row.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(44)));
 
         ImageView chevron = iconImage(R.drawable.ic_chevron_left, AppTheme.withAlpha(theme.secondaryText, 0.34), 17);

@@ -44,8 +44,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.57";
-    private static final String APP_BUILD = "148";
+    private static final String APP_VERSION = "0.6.58";
+    private static final String APP_BUILD = "149";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -244,7 +244,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         rowsContainer = vertical();
         rowsContainer.setPadding(dp(5), dp(5), dp(5), dp(0));
-        rowsContainer.setBackground(round(theme.night ? Color.argb(70, 255, 255, 255) : Color.argb(112, 225, 242, 255), 22, theme.activeBorder));
+        rowsContainer.setBackground(round(scheduleOuterPanel(), 22, scheduleOuterBorder()));
         elevate(rowsContainer, 2);
         root.addView(rowsContainer, fullWidth());
 
@@ -258,11 +258,39 @@ public class MainActivity extends Activity implements SensorEventListener {
         return root;
     }
 
+    private int scheduleOuterPanel() {
+        return theme.night ? Color.argb(116, 12, 24, 34) : Color.argb(112, 225, 242, 255);
+    }
+
+    private int scheduleOuterBorder() {
+        return theme.night ? Color.argb(116, 78, 148, 210) : theme.activeBorder;
+    }
+
+    private int scheduleSoftBorder() {
+        return theme.night ? Color.argb(82, 206, 222, 238) : theme.border;
+    }
+
+    private int scheduleRow() {
+        return theme.night ? Color.argb(176, 35, 48, 59) : theme.row;
+    }
+
+    private int scheduleRowBorder() {
+        return theme.night ? Color.argb(86, 224, 235, 246) : theme.border;
+    }
+
+    private int scheduleActiveRow() {
+        return theme.night ? Color.argb(208, 24, 72, 118) : theme.activeRow;
+    }
+
+    private int scheduleActiveBorder() {
+        return theme.night ? Color.argb(186, 76, 150, 255) : theme.activeBorder;
+    }
+
     private View timeHeaderCard() {
         LinearLayout card = vertical();
         card.setGravity(Gravity.CENTER);
         card.setPadding(dp(8), dp(7), dp(8), dp(7));
-        card.setBackground(round(theme.night ? Color.argb(82, 255, 255, 255) : Color.argb(178, 255, 255, 255), 22, theme.border));
+        card.setBackground(round(theme.night ? Color.argb(168, 16, 22, 30) : Color.argb(178, 255, 255, 255), 22, scheduleSoftBorder()));
         elevate(card, 4);
 
         currentTimeLabel = label("--:--:--", 19, theme.accent, Typeface.BOLD);
@@ -297,7 +325,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private View nextPrayerCard() {
         FrameLayout card = new FrameLayout(this);
-        card.setBackground(round(Color.TRANSPARENT, 24, theme.night ? AppTheme.withAlpha(Color.WHITE, 0.14) : AppTheme.withAlpha(Color.WHITE, 0.72)));
+        card.setBackground(round(Color.TRANSPARENT, 24, theme.night ? Color.argb(82, 210, 224, 238) : AppTheme.withAlpha(Color.WHITE, 0.72)));
         card.setClipToOutline(true);
         elevate(card, 3);
 
@@ -307,7 +335,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         View overlay = new View(this);
-        overlay.setBackgroundColor(theme.night ? Color.argb(92, 0, 0, 0) : Color.argb(44, 255, 255, 255));
+        overlay.setBackgroundColor(theme.night ? Color.argb(24, 0, 0, 0) : Color.argb(44, 255, 255, 255));
         card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
 
         View floorGlow = new View(this);
@@ -353,8 +381,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     new int[]{
                             Color.argb(0, 0, 0, 0),
-                            Color.argb(122, 0, 0, 0),
-                            Color.argb(214, 0, 0, 0)
+                            Color.argb(102, 0, 0, 0),
+                            Color.argb(186, 0, 0, 0)
                     }
             );
         }
@@ -374,8 +402,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     new int[]{
                             Color.argb(0, 0, 0, 0),
-                            Color.argb(62, 0, 0, 0),
-                            Color.argb(170, 0, 0, 0)
+                            Color.argb(46, 0, 0, 0),
+                            Color.argb(142, 0, 0, 0)
                     }
             );
         }
@@ -439,7 +467,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         row.setPadding(dp(10), dp(3), dp(8), dp(3));
-        row.setBackground(round(active ? theme.activeRow : theme.row, 10, active ? theme.activeBorder : theme.border));
+        row.setBackground(round(active ? scheduleActiveRow() : scheduleRow(), 10, active ? scheduleActiveBorder() : scheduleRowBorder()));
         elevate(row, active ? 3 : 1);
         row.setOnClickListener(v -> showPrayerDetails(item));
 

@@ -10,8 +10,8 @@ android {
         applicationId "com.example.telshevaazan"
         minSdk 23
         targetSdk 35
-        versionCode 148
-        versionName "0.6.57"
+        versionCode 149
+        versionName "0.6.58"
     }
 
     compileOptions {

@@ -6,7 +6,13 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.AudioAttributes;
@@ -38,8 +44,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.56";
-    private static final String APP_BUILD = "147";
+    private static final String APP_VERSION = "0.6.57";
+    private static final String APP_BUILD = "148";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -83,17 +89,19 @@ public class MainActivity extends Activity implements SensorEventListener {
     private boolean hasGravity;
     private boolean hasMagnetic;
     private Double heading;
-    private TextView qiblaNeedle;
+    private QiblaCompassView qiblaCompass;
     private TextView qiblaInstruction;
     private TextView qiblaDifference;
     private TextView qiblaStatus;
+    private TextView qiblaHeadingValue;
+    private TextView qiblaDeltaValue;
 
     private MediaPlayer radioPlayer;
     private boolean radioPlaying;
     private boolean radioLoading;
     private TextView radioStatus;
     private ProgressBar radioProgress;
-    private Button radioButton;
+    private TextView radioButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -1195,21 +1203,32 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private View qiblaContent() {
         LinearLayout root = pageRoot();
-        root.addView(pageHeader("القبلة", "اتجاه مكة من تل السبع · " + Math.round(QiblaCalculator.telShevaBearing()) + "°", "قبلة"), fullWidth());
-        qiblaNeedle = label("▲", 112, theme.accent, Typeface.BOLD);
-        qiblaNeedle.setGravity(Gravity.CENTER);
-        qiblaNeedle.setPadding(0, dp(28), 0, dp(28));
-        qiblaNeedle.setBackground(round(theme.panel, 160, theme.activeBorder));
-        root.addView(qiblaNeedle, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(270)));
-        qiblaInstruction = label("حرّك الهاتف بهدوء", 24, theme.accent, Typeface.BOLD);
+        root.addView(mediaPageHeader("القبلة", "اتجاه مكة من تل السبع · " + formatDegree(QiblaCalculator.telShevaBearing()), R.drawable.ic_tab_qibla), fullWidthWithMargins(0, dp(4), 0, dp(16)));
+
+        FrameLayout compassFrame = new FrameLayout(this);
+        qiblaCompass = new QiblaCompassView();
+        FrameLayout.LayoutParams compassParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER);
+        compassParams.setMargins(dp(6), 0, dp(6), 0);
+        compassFrame.addView(qiblaCompass, compassParams);
+        root.addView(compassFrame, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(300)));
+
+        qiblaInstruction = label("المؤشر المضيء يشير للقبلة", 17, theme.accent, Typeface.BOLD);
         qiblaInstruction.setGravity(Gravity.CENTER);
-        root.addView(qiblaInstruction, fullWidthWithMargins(0, 12, 0, 8));
-        qiblaDifference = label("الفرق المتبقي --", 18, theme.primaryText, Typeface.BOLD);
+        root.addView(qiblaInstruction, fullWidthWithMargins(0, dp(4), 0, dp(6)));
+        qiblaDifference = label("لف الهاتف بهدوء للوصول للقبلة", 21, theme.accent, Typeface.BOLD);
         qiblaDifference.setGravity(Gravity.CENTER);
-        root.addView(qiblaDifference, fullWidthWithMargins(0, 0, 0, 8));
-        qiblaStatus = label("شغّل البوصلة ووجّه أعلى الهاتف", 14, theme.secondaryText, Typeface.BOLD);
-        qiblaStatus.setGravity(Gravity.CENTER);
-        root.addView(qiblaStatus, fullWidth());
+        root.addView(qiblaDifference, fullWidthWithMargins(0, 0, 0, dp(12)));
+
+        LinearLayout metrics = new LinearLayout(this);
+        metrics.setOrientation(LinearLayout.HORIZONTAL);
+        metrics.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        qiblaDeltaValue = label("--", 28, theme.accent, Typeface.BOLD);
+        qiblaHeadingValue = label("--", 28, theme.primaryText, Typeface.BOLD);
+        metrics.addView(qiblaMetricTile("الفرق المتبقي", qiblaDeltaValue), metricParams(0));
+        metrics.addView(qiblaMetricTile("اتجاه الهاتف", qiblaHeadingValue), metricParams(dp(10)));
+        root.addView(metrics, fullWidthWithMargins(0, 0, 0, dp(12)));
+
+        root.addView(qiblaInfoCard(), fullWidth());
         updateQiblaText();
         return root;
     }
@@ -1232,46 +1251,89 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void updateQiblaText() {
-        if (qiblaNeedle == null) {
+        if (qiblaCompass == null) {
             return;
         }
         if (heading == null) {
-            qiblaInstruction.setText("المؤشر المضيء يشير للقبلة");
-            qiblaDifference.setText("الفرق المتبقي --");
+            qiblaCompass.setAngles(null, 0);
+            if (qiblaInstruction != null) {
+                qiblaInstruction.setText("المؤشر المضيء يشير للقبلة");
+                qiblaInstruction.setTextColor(theme.accent);
+            }
+            if (qiblaDifference != null) {
+                qiblaDifference.setText("حرّك الهاتف بهدوء");
+            }
+            if (qiblaHeadingValue != null) {
+                qiblaHeadingValue.setText("--");
+            }
+            if (qiblaDeltaValue != null) {
+                qiblaDeltaValue.setText("--");
+            }
             return;
         }
         double delta = QiblaCalculator.delta(heading, QiblaCalculator.telShevaBearing());
-        qiblaNeedle.setRotation((float) delta);
+        qiblaCompass.setAngles(heading, delta);
         boolean aligned = Math.abs(delta) <= 5;
-        qiblaInstruction.setText(aligned ? "أنت على اتجاه القبلة" : (delta > 0 ? "لف يمين قليلًا" : "لف يسار قليلًا"));
-        qiblaDifference.setText("الفرق المتبقي " + Math.round(Math.abs(delta)) + "°");
-        qiblaInstruction.setTextColor(aligned ? Color.rgb(72, 220, 112) : theme.accent);
+        long absDelta = Math.round(Math.abs(delta));
+        if (qiblaInstruction != null) {
+            qiblaInstruction.setText(aligned ? "أنت على اتجاه القبلة" : "المؤشر المضيء يشير للقبلة");
+            qiblaInstruction.setTextColor(aligned ? Color.rgb(72, 220, 112) : theme.accent);
+        }
+        if (qiblaDifference != null) {
+            String turn = delta > 0 ? "لف يمين" : "لف يسار";
+            qiblaDifference.setText(aligned ? "اتجاهك مضبوط" : turn + " " + absDelta + "° للوصول للقبلة");
+        }
+        if (qiblaHeadingValue != null) {
+            qiblaHeadingValue.setText(formatDegree(heading));
+        }
+        if (qiblaDeltaValue != null) {
+            qiblaDeltaValue.setText(absDelta + "°");
+        }
     }
 
     private View radioContent() {
         LinearLayout root = pageRoot();
-        root.addView(pageHeader("راديو القرآن", "إذاعة القرآن الكريم من نابلس", "راديو"), fullWidth());
+        root.addView(mediaPageHeader("راديو القرآن", "إذاعة القرآن الكريم من نابلس", R.drawable.ic_tab_radio), fullWidthWithMargins(0, dp(4), 0, dp(58)));
         LinearLayout panel = vertical();
         panel.setGravity(Gravity.RIGHT);
-        panel.setPadding(dp(18), dp(18), dp(18), dp(18));
-        panel.setBackground(round(theme.panel, 8, theme.border));
+        panel.setPadding(dp(20), dp(18), dp(20), dp(20));
+        panel.setBackground(round(theme.panel, 14, theme.activeBorder));
+        elevate(panel, 2);
 
-        radioStatus = label(radioLoading ? "جار الاتصال بالبث" : (radioPlaying ? "يعمل الآن" : "جاهز للتشغيل"), 14, theme.secondaryText, Typeface.BOLD);
+        radioStatus = label(radioStatusText(), 15, theme.secondaryText, Typeface.BOLD);
         panel.addView(radioStatus, fullWidth());
-        TextView title = label("إذاعة القرآن الكريم", 31, theme.primaryText, Typeface.BOLD);
-        panel.addView(title, fullWidthWithMargins(0, dp(16), 0, dp(4)));
-        TextView sub = label("الصوت القريب إلى القلوب", 13, theme.secondaryText, Typeface.BOLD);
+        TextView live = label("البث المباشر", 16, theme.accent, Typeface.BOLD);
+        panel.addView(live, fullWidthWithMargins(0, dp(20), 0, dp(4)));
+        TextView title = label("إذاعة القرآن الكريم", 34, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        panel.addView(title, fullWidthWithMargins(0, 0, 0, dp(2)));
+        TextView sub = label("الصوت القريب إلى القلوب", 15, theme.secondaryText, Typeface.BOLD);
         panel.addView(sub, fullWidth());
         radioProgress = new ProgressBar(this);
+        radioProgress.setIndeterminate(true);
         radioProgress.setVisibility(radioLoading ? View.VISIBLE : View.GONE);
-        panel.addView(radioProgress, fullWidthWithMargins(0, dp(18), 0, dp(8)));
-        radioButton = smallFullButton(radioPlaying ? "إيقاف البث" : "تشغيل البث", v -> toggleRadio());
-        panel.addView(radioButton, fullWidthWithMargins(0, dp(18), 0, 0));
-        root.addView(panel, fullWidthWithMargins(0, dp(24), 0, dp(14)));
-        TextView source = label("بث مباشر يحتاج اتصال إنترنت وقد يستمر في الخلفية ما دام التطبيق يعمل.", 13, theme.secondaryText, Typeface.BOLD);
-        source.setPadding(dp(14), dp(14), dp(14), dp(14));
-        source.setBackground(round(theme.control, 8, theme.border));
-        root.addView(source, fullWidth());
+        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(dp(42), dp(42));
+        progressParams.gravity = Gravity.CENTER_HORIZONTAL;
+        progressParams.setMargins(0, dp(18), 0, 0);
+        panel.addView(radioProgress, progressParams);
+
+        radioButton = label("", 40, Color.WHITE, Typeface.BOLD);
+        radioButton.setGravity(Gravity.CENTER);
+        radioButton.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        radioButton.setTextDirection(View.TEXT_DIRECTION_LTR);
+        radioButton.setIncludeFontPadding(false);
+        radioButton.setBackground(round(theme.accent, 56, theme.accent));
+        radioButton.setOnClickListener(v -> {
+            bubbleDockItem(radioButton);
+            toggleRadio();
+        });
+        LinearLayout.LayoutParams playParams = new LinearLayout.LayoutParams(dp(108), dp(108));
+        playParams.gravity = Gravity.CENTER_HORIZONTAL;
+        playParams.setMargins(0, dp(22), 0, 0);
+        panel.addView(radioButton, playParams);
+        root.addView(panel, fullWidthWithMargins(0, 0, 0, dp(18)));
+        root.addView(radioSourceCard(), fullWidth());
+        updateRadioLabels();
         return root;
     }
 
@@ -1344,18 +1406,230 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private void updateRadioLabels() {
-        updateRadioLabels(radioLoading ? "جار الاتصال بالبث" : (radioPlaying ? "يعمل الآن" : "جاهز للتشغيل"));
+        updateRadioLabels(radioStatusText());
     }
 
     private void updateRadioLabels(String status) {
         if (radioStatus != null) {
-            radioStatus.setText(status);
+            radioStatus.setText(status.startsWith("•") ? status : "• " + status);
         }
         if (radioProgress != null) {
             radioProgress.setVisibility(radioLoading ? View.VISIBLE : View.GONE);
         }
         if (radioButton != null) {
-            radioButton.setText(radioPlaying || radioLoading ? "إيقاف البث" : "تشغيل البث");
+            radioButton.setText(radioPlaying || radioLoading ? "■" : "▶");
+            radioButton.setTextSize(radioPlaying || radioLoading ? 32 : 42);
+        }
+    }
+
+    private String radioStatusText() {
+        return "• " + (radioLoading ? "جار الاتصال بالبث" : (radioPlaying ? "يعمل الآن" : "جاهز للتشغيل"));
+    }
+
+    private View mediaPageHeader(String title, String subtitle, int iconResource) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(12), dp(2), dp(14));
+
+        FrameLayout iconBox = new FrameLayout(this);
+        iconBox.setBackground(round(theme.control, 12, theme.border));
+        ImageView icon = iconImage(iconResource, theme.accent, 30);
+        iconBox.addView(icon, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER));
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(56), dp(56));
+        row.addView(iconBox, iconParams);
+
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView titleView = label(title, 34, theme.primaryText, Typeface.BOLD);
+        titleView.setGravity(Gravity.RIGHT);
+        singleLine(titleView);
+        text.addView(titleView, fullWidth());
+        TextView subtitleView = label(subtitle, 14, theme.accent, Typeface.BOLD);
+        subtitleView.setGravity(Gravity.RIGHT);
+        singleLine(subtitleView);
+        text.addView(subtitleView, fullWidth());
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View qiblaMetricTile(String title, TextView valueView) {
+        LinearLayout tile = vertical();
+        tile.setGravity(Gravity.RIGHT);
+        tile.setPadding(dp(14), dp(10), dp(14), dp(10));
+        tile.setBackground(round(theme.control, 10, theme.border));
+        TextView titleView = label(title, 14, theme.secondaryText, Typeface.BOLD);
+        singleLine(titleView);
+        tile.addView(titleView, fullWidth());
+        valueView.setGravity(Gravity.RIGHT);
+        valueView.setSingleLine(true);
+        tile.addView(valueView, fullWidth());
+        return tile;
+    }
+
+    private LinearLayout.LayoutParams metricParams(int leftMargin) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(72), 1);
+        params.setMargins(leftMargin, 0, 0, 0);
+        return params;
+    }
+
+    private View qiblaInfoCard() {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(16), dp(14), dp(16), dp(14));
+        card.setBackground(round(theme.panel, 12, theme.activeBorder));
+
+        ImageView check = iconImage(R.drawable.ic_notification_check, theme.accent, 24);
+        card.addView(check, new LinearLayout.LayoutParams(dp(36), dp(52)));
+
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("دقة جيدة، أبعد الهاتف عن المعادن", 20, theme.primaryText, Typeface.BOLD);
+        singleLine(title);
+        text.addView(title, fullWidth());
+        qiblaStatus = label("الدقة: 14° · الشمال الحقيقي", 14, theme.secondaryText, Typeface.BOLD);
+        singleLine(qiblaStatus);
+        text.addView(qiblaStatus, fullWidth());
+        TextView hint = label("لأفضل نتيجة أبعد الهاتف عن السماعات والمغناطيس وامسكه بشكل أفقي.", 13, theme.secondaryText, Typeface.BOLD);
+        hint.setMaxLines(2);
+        text.addView(hint, fullWidthWithMargins(0, dp(4), 0, 0));
+        card.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return card;
+    }
+
+    private View radioSourceCard() {
+        LinearLayout card = vertical();
+        card.setGravity(Gravity.RIGHT);
+        card.setPadding(dp(16), dp(14), dp(16), dp(16));
+        card.setBackground(round(theme.panel, 12, theme.border));
+
+        TextView title = label("المصدر", 18, theme.accent, Typeface.BOLD);
+        card.addView(title, fullWidth());
+        TextView body = label("بث مباشر من إذاعة القرآن الكريم من نابلس. يحتاج اتصال إنترنت ويستمر في الخلفية ما دام التطبيق يعمل.", 15, theme.secondaryText, Typeface.BOLD);
+        body.setMaxLines(3);
+        card.addView(body, fullWidthWithMargins(0, dp(12), 0, dp(12)));
+
+        TextView button = label("فتح موقع الإذاعة", 15, theme.accent, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+        button.setBackground(round(theme.control, 10, theme.border));
+        button.setOnClickListener(v -> openRadioSite());
+        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(dp(178), dp(48));
+        buttonParams.gravity = Gravity.RIGHT;
+        card.addView(button, buttonParams);
+        return card;
+    }
+
+    private void openRadioSite() {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://quran-radio.org/"));
+            startActivity(intent);
+        } catch (Exception exception) {
+            Toast.makeText(this, "تعذر فتح موقع الإذاعة", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String formatDegree(double value) {
+        return String.format(java.util.Locale.US, "%.1f°", value);
+    }
+
+    private final class QiblaCompassView extends View {
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private Double headingValue;
+        private double deltaValue;
+
+        QiblaCompassView() {
+            super(MainActivity.this);
+        }
+
+        void setAngles(Double headingValue, double deltaValue) {
+            this.headingValue = headingValue;
+            this.deltaValue = deltaValue;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            float width = getWidth();
+            float height = getHeight();
+            float size = Math.min(width, height);
+            float cx = width / 2f;
+            float cy = height / 2f;
+            float radius = size * 0.46f;
+
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(theme.night ? Color.argb(55, 255, 255, 255) : Color.argb(150, 238, 247, 255));
+            canvas.drawCircle(cx, cy, radius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            paint.setColor(theme.night ? Color.argb(80, 255, 255, 255) : Color.argb(115, 55, 130, 255));
+            canvas.drawCircle(cx, cy, radius, paint);
+            paint.setStrokeWidth(dp(4));
+            paint.setColor(theme.accent);
+            canvas.drawCircle(cx, cy, radius * 0.83f, paint);
+
+            for (int i = 0; i < 60; i++) {
+                double angle = Math.toRadians(i * 6 - 90);
+                boolean major = i % 5 == 0;
+                float inner = radius * (major ? 0.74f : 0.79f);
+                float outer = radius * 0.83f;
+                paint.setStrokeWidth(major ? dp(3) : dp(2));
+                paint.setColor(major ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.55));
+                canvas.drawLine(
+                        cx + (float) Math.cos(angle) * inner,
+                        cy + (float) Math.sin(angle) * inner,
+                        cx + (float) Math.cos(angle) * outer,
+                        cy + (float) Math.sin(angle) * outer,
+                        paint
+                );
+            }
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(AppTheme.withAlpha(theme.accent, theme.night ? 0.22 : 0.18));
+            canvas.drawCircle(cx, cy, radius * 0.28f, paint);
+
+            canvas.save();
+            canvas.rotate(headingValue == null ? 0f : (float) deltaValue, cx, cy);
+            Path needle = new Path();
+            needle.moveTo(cx, cy - radius * 0.50f);
+            needle.lineTo(cx - radius * 0.15f, cy + radius * 0.32f);
+            needle.lineTo(cx, cy + radius * 0.20f);
+            needle.lineTo(cx + radius * 0.15f, cy + radius * 0.32f);
+            needle.close();
+            paint.setShader(new LinearGradient(cx, cy - radius * 0.50f, cx, cy + radius * 0.34f,
+                    theme.accent, Color.rgb(226, 198, 130), Shader.TileMode.CLAMP));
+            canvas.drawPath(needle, paint);
+            paint.setShader(null);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(2));
+            paint.setColor(AppTheme.withAlpha(Color.WHITE, theme.night ? 0.64 : 0.72));
+            canvas.drawLine(cx, cy - radius * 0.42f, cx, cy + radius * 0.24f, paint);
+            canvas.restore();
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(theme.accent);
+            canvas.drawCircle(cx, cy, radius * 0.10f, paint);
+            paint.setColor(theme.panel);
+            canvas.drawCircle(cx, cy, radius * 0.055f, paint);
+
+            RectF makkahBubble = new RectF(cx - dp(38), cy - radius * 0.52f - dp(18), cx + dp(38), cy - radius * 0.52f + dp(18));
+            paint.setColor(theme.night ? Color.argb(42, 255, 255, 255) : Color.argb(38, 0, 122, 255));
+            paint.setStyle(Paint.Style.FILL);
+            canvas.drawRoundRect(makkahBubble, dp(18), dp(18), paint);
+            paint.setColor(theme.accent);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            paint.setTextSize(dp(18));
+            canvas.drawText("مكة", cx, cy - radius * 0.52f + dp(7), paint);
+
+            paint.setColor(AppTheme.withAlpha(theme.primaryText, 0.76));
+            paint.setTextSize(dp(15));
+            canvas.drawText("حرّك الهاتف بهدوء", cx, cy + radius * 0.46f, paint);
         }
     }
 

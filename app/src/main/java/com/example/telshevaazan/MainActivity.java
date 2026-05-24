@@ -20,6 +20,7 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.view.animation.OvershootInterpolator;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
@@ -37,8 +38,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.54";
-    private static final String APP_BUILD = "145";
+    private static final String APP_VERSION = "0.6.55";
+    private static final String APP_BUILD = "146";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -1180,7 +1181,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private LinearLayout dock() {
         LinearLayout dock = new LinearLayout(this);
         dock.setOrientation(LinearLayout.HORIZONTAL);
-        dock.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        dock.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         dock.setGravity(Gravity.CENTER);
         dock.setPadding(dp(8), dp(6), dp(8), dp(6));
         dock.setBackground(round(theme.night ? Color.argb(146, 0, 0, 0) : Color.argb(238, 255, 255, 255), 28, theme.border));
@@ -1200,9 +1201,33 @@ public class MainActivity extends Activity implements SensorEventListener {
         item.setPadding(dp(2), dp(4), dp(2), dp(2));
         item.setBackground(round(selected ? theme.accent : Color.TRANSPARENT, selected ? 20 : 16, Color.TRANSPARENT));
         item.setOnClickListener(v -> {
-            selectedTab = tab;
-            rebuildContent();
+            if (selectedTab == tab) {
+                bubbleDockItem(item);
+                return;
+            }
+            v.animate()
+                    .scaleX(0.90f)
+                    .scaleY(0.90f)
+                    .setDuration(70)
+                    .withEndAction(() -> {
+                        selectedTab = tab;
+                        rebuildContent();
+                    })
+                    .start();
         });
+
+        if (selected) {
+            item.setScaleX(0.88f);
+            item.setScaleY(0.88f);
+            item.setTranslationY(dp(6));
+            item.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .translationY(0)
+                    .setDuration(260)
+                    .setInterpolator(new OvershootInterpolator(1.55f))
+                    .start();
+        }
 
         ImageView icon = iconImage(tabIcon(tab), selected ? Color.WHITE : theme.secondaryText, selected ? 22 : 20);
         item.addView(icon, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
@@ -1217,6 +1242,20 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, selected ? 1.18f : 1f);
         params.setMargins(dp(2), 0, dp(2), 0);
         dock.addView(item, params);
+    }
+
+    private void bubbleDockItem(View item) {
+        item.animate()
+                .scaleX(1.08f)
+                .scaleY(1.08f)
+                .setDuration(90)
+                .withEndAction(() -> item.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(180)
+                        .setInterpolator(new OvershootInterpolator(1.35f))
+                        .start())
+                .start();
     }
 
     private int tabIcon(Tab tab) {

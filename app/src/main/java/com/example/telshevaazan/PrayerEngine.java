@@ -14,6 +14,25 @@ import java.util.TimeZone;
 
 final class PrayerEngine {
     static final TimeZone TIME_ZONE = TimeZone.getTimeZone("Asia/Jerusalem");
+    private static final String[] HIJRI_MONTHS = {
+            "محرم",
+            "صفر",
+            "ربيع الأول",
+            "ربيع الآخر",
+            "جمادى الأولى",
+            "جمادى الآخرة",
+            "رجب",
+            "شعبان",
+            "رمضان",
+            "شوال",
+            "ذو القعدة",
+            "ذو الحجة"
+    };
+    private static final int[] HIJRI_MONTH_LENGTHS = {30, 29, 30, 29, 30, 29, 30, 29, 30, 29, 30, 30};
+    private static final String HIJRI_ANCHOR_DATE = "2026-05-24";
+    private static final int HIJRI_ANCHOR_YEAR = 1447;
+    private static final int HIJRI_ANCHOR_MONTH = 12;
+    private static final int HIJRI_ANCHOR_DAY = 7;
     static final PrayerKey[] PRAYER_ORDER = {
             PrayerKey.FAJR,
             PrayerKey.DHUHR,
@@ -135,7 +154,7 @@ final class PrayerEngine {
     static String longDateLabel(String dateKey) {
         SimpleDateFormat formatter = new SimpleDateFormat("EEEE، d MMMM yyyy", new Locale("ar"));
         formatter.setTimeZone(TIME_ZONE);
-        return latinDigits(formatter.format(date(dateKey, "12:00")));
+        return latinDigits(formatter.format(date(dateKey, "12:00")) + " • " + hijriDateLabel(dateKey));
     }
 
     static String timeText(Date date, boolean withSeconds) {
@@ -196,6 +215,48 @@ final class PrayerEngine {
                 .replace('٥', '5').replace('٦', '6').replace('٧', '7').replace('٨', '8').replace('٩', '9')
                 .replace('۰', '0').replace('۱', '1').replace('۲', '2').replace('۳', '3').replace('۴', '4')
                 .replace('۵', '5').replace('۶', '6').replace('۷', '7').replace('۸', '8').replace('۹', '9');
+    }
+
+    private static String hijriDateLabel(String dateKey) {
+        long days = (date(dateKey, "12:00").getTime() - date(HIJRI_ANCHOR_DATE, "12:00").getTime()) / 86400000L;
+        int year = HIJRI_ANCHOR_YEAR;
+        int month = HIJRI_ANCHOR_MONTH;
+        int day = HIJRI_ANCHOR_DAY;
+
+        while (days > 0) {
+            int monthLength = hijriMonthLength(month);
+            if (day < monthLength) {
+                day++;
+            } else {
+                day = 1;
+                month++;
+                if (month > 12) {
+                    month = 1;
+                    year++;
+                }
+            }
+            days--;
+        }
+
+        while (days < 0) {
+            if (day > 1) {
+                day--;
+            } else {
+                month--;
+                if (month < 1) {
+                    month = 12;
+                    year--;
+                }
+                day = hijriMonthLength(month);
+            }
+            days++;
+        }
+
+        return day + " " + HIJRI_MONTHS[month - 1] + "، " + year + " هـ";
+    }
+
+    private static int hijriMonthLength(int month) {
+        return HIJRI_MONTH_LENGTHS[Math.max(0, Math.min(11, month - 1))];
     }
 
     private static List<PrayerTime> prayerEvents(String dateKey) {

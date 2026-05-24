@@ -36,8 +36,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.45";
-    private static final String APP_BUILD = "136";
+    private static final String APP_VERSION = "0.6.46";
+    private static final String APP_BUILD = "137";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -228,7 +228,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         root.setGravity(Gravity.RIGHT);
         root.setPadding(dp(2), 0, dp(2), dp(4));
 
-        root.addView(timeHeaderCard(), fullWidthWithMargins(dp(62), dp(4), dp(62), dp(8)));
+        root.addView(timeHeaderCard(), fullWidthWithMargins(dp(36), dp(4), dp(36), dp(8)));
         root.addView(nextPrayerCard(), fullWidthWithMargins(0, 0, 0, dp(8)));
 
         rowsContainer = vertical();
@@ -260,7 +260,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         currentTimeLabel.setIncludeFontPadding(false);
         card.addView(currentTimeLabel, fullWidth());
 
-        dateLabel = label("--", 11, theme.accent, Typeface.BOLD);
+        dateLabel = label("--", 10, theme.accent, Typeface.BOLD);
         dateLabel.setGravity(Gravity.CENTER);
         dateLabel.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         card.addView(dateLabel, fullWidthWithMargins(0, dp(2), 0, dp(5)));
@@ -293,16 +293,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         ImageView image = new ImageView(this);
         image.setImageResource(theme.night ? R.drawable.nabawi_night : R.drawable.nabawi_day);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(184)));
+        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(206)));
 
         View overlay = new View(this);
         overlay.setBackgroundColor(theme.night ? Color.argb(112, 0, 0, 0) : Color.argb(126, 255, 255, 255));
-        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(184)));
+        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(206)));
 
         LinearLayout content = vertical();
         content.setGravity(Gravity.RIGHT);
         content.setPadding(dp(18), dp(15), dp(18), dp(12));
-        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(184)));
+        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(206)));
 
         TextView caption = label("الصلاة القادمة", 13, theme.accent, Typeface.BOLD);
         content.addView(caption, fullWidth());
@@ -408,12 +408,12 @@ public class MainActivity extends Activity implements SensorEventListener {
         } else if (justPassed && previous != null) {
             detail.setText("مضى على " + previous.title + " " + PrayerEngine.durationText(now.getTime() - previous.date.getTime()));
         } else {
-            detail.setText(item.key == PrayerKey.SUNRISE ? "وقت الشروق" : "");
+            detail.setText("");
         }
         text.addView(detail, fullWidth());
         row.addView(text, new LinearLayout.LayoutParams(0, dp(44), 1));
 
-        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.70), 22);
+        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.62), 21);
         row.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(44)));
 
         ImageView chevron = iconImage(R.drawable.ic_chevron_left, AppTheme.withAlpha(theme.secondaryText, 0.34), 17);
@@ -441,12 +441,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             case FAJR:
                 return R.drawable.ic_prayer_fajr;
             case SUNRISE:
-            case DHUHR:
                 return R.drawable.ic_prayer_sun;
+            case DHUHR:
+                return R.drawable.ic_prayer_dhuhr;
             case ASR:
-                return R.drawable.ic_prayer_cloud;
+                return R.drawable.ic_prayer_asr;
             case MAGHRIB:
-                return R.drawable.ic_prayer_fajr;
+                return R.drawable.ic_prayer_maghrib;
             case ISHA:
             default:
                 return R.drawable.ic_prayer_moon;

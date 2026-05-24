@@ -36,8 +36,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.50";
-    private static final String APP_BUILD = "141";
+    private static final String APP_VERSION = "0.6.51";
+    private static final String APP_BUILD = "142";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -62,6 +62,7 @@ public class MainActivity extends Activity implements SensorEventListener {
     private String selectedDateKey;
     private boolean followsToday = true;
     private Tab selectedTab = Tab.SCHEDULE;
+    private NotificationPane selectedNotificationPane = NotificationPane.ADHAN;
 
     private TextView currentTimeLabel;
     private TextView dateLabel;
@@ -521,37 +522,206 @@ public class MainActivity extends Activity implements SensorEventListener {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = pageRoot();
         scroll.addView(root);
-        root.addView(pageHeader("التنبيه", "الأذان والأنماط", "تنبيه"), fullWidth());
-
-        root.addView(togglePanel(
-                "تشغيل تنبيهات الأذان",
-                SalatiSettings.adhanEnabled(this) ? "التنبيهات مفعّلة للصلوات المختارة" : "التنبيهات غير مفعلة",
-                SalatiSettings.adhanEnabled(this),
-                () -> {
-                    boolean next = !SalatiSettings.adhanEnabled(this);
-                    SalatiSettings.prefs(this).edit().putBoolean(SalatiSettings.KEY_ADHAN_ENABLED, next).apply();
-                    if (next) {
-                        requestNotificationPermissionIfNeeded();
-                    }
-                    PrayerNotificationScheduler.scheduleAll(this);
-                    rebuildContent();
-                }
-        ), fullWidthWithMargins(0, 0, 0, 12));
-
-        root.addView(panel("صوت الأذان", soundOptions()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("الصلوات التي يصدر لها الأذان", prayerToggles()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("أنماط التطبيق", themeChoices()), fullWidthWithMargins(0, 0, 0, dp(16)));
+        root.addView(notificationHeader(), fullWidthWithMargins(0, dp(20), 0, dp(16)));
+        root.addView(notificationSegmentedControl(), fullWidthWithMargins(dp(4), 0, dp(4), dp(18)));
+        if (selectedNotificationPane == NotificationPane.THEMES) {
+            root.addView(notificationThemesPanel(), fullWidthWithMargins(0, 0, 0, dp(18)));
+        } else {
+            root.addView(notificationMasterToggle(), fullWidthWithMargins(0, 0, 0, dp(12)));
+            root.addView(notificationPanel("صوت الأذان", R.drawable.ic_notification_volume, soundOptions(), null), fullWidthWithMargins(0, 0, 0, dp(12)));
+            root.addView(notificationPanel("الصلوات التي يصدر لها الأذان", R.drawable.ic_notification_bell_ring, prayerToggles(), enabledPrayerSummary()), fullWidthWithMargins(0, 0, 0, dp(18)));
+        }
         return scroll;
+    }
+
+    private View notificationHeader() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(6), 0, dp(6), 0);
+
+        FrameLayout iconBox = new FrameLayout(this);
+        iconBox.setBackground(round(theme.control, 12, theme.border));
+        ImageView icon = iconImage(R.drawable.ic_tab_bell, theme.accent, 26);
+        iconBox.addView(icon, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        row.addView(iconBox, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("التنبيه", 34, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        TextView subtitle = label("الأذان والأنماط", 15, theme.accent, Typeface.BOLD);
+        subtitle.setIncludeFontPadding(false);
+        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View notificationSegmentedControl() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams leftSegment = new LinearLayout.LayoutParams(0, dp(52), 1);
+        leftSegment.setMargins(dp(5), 0, dp(5), 0);
+        LinearLayout.LayoutParams rightSegment = new LinearLayout.LayoutParams(0, dp(52), 1);
+        rightSegment.setMargins(dp(5), 0, dp(5), 0);
+        row.addView(notificationSegment("الأنماط", R.drawable.ic_notification_palette, selectedNotificationPane == NotificationPane.THEMES, () -> {
+            selectedNotificationPane = NotificationPane.THEMES;
+            rebuildContent();
+        }), leftSegment);
+        row.addView(notificationSegment("الأذان", R.drawable.ic_tab_bell, selectedNotificationPane == NotificationPane.ADHAN, () -> {
+            selectedNotificationPane = NotificationPane.ADHAN;
+            rebuildContent();
+        }), rightSegment);
+        return row;
+    }
+
+    private View notificationSegment(String title, int iconResource, boolean selected, Runnable action) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.HORIZONTAL);
+        item.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        item.setGravity(Gravity.CENTER);
+        item.setPadding(dp(12), 0, dp(12), 0);
+        item.setBackground(round(selected ? theme.accent : theme.control, 12, selected ? theme.activeBorder : Color.TRANSPARENT));
+        item.setOnClickListener(v -> action.run());
+
+        ImageView icon = iconImage(iconResource, selected ? theme.primaryText : theme.secondaryText, 20);
+        item.addView(icon, new LinearLayout.LayoutParams(dp(28), dp(36)));
+        TextView label = label(title, 15, selected ? theme.primaryText : theme.secondaryText, Typeface.BOLD);
+        label.setGravity(Gravity.CENTER);
+        label.setIncludeFontPadding(false);
+        item.addView(label, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+        return item;
+    }
+
+    private View notificationMasterToggle() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(16), dp(18), dp(16));
+        row.setBackground(round(theme.panel, 12, theme.activeBorder));
+        row.setOnClickListener(v -> {
+            boolean next = !SalatiSettings.adhanEnabled(this);
+            SalatiSettings.prefs(this).edit().putBoolean(SalatiSettings.KEY_ADHAN_ENABLED, next).apply();
+            if (next) {
+                requestNotificationPermissionIfNeeded();
+            }
+            PrayerNotificationScheduler.scheduleAll(this);
+            rebuildContent();
+        });
+
+        row.addView(switchPill(SalatiSettings.adhanEnabled(this)), new LinearLayout.LayoutParams(dp(74), dp(42)));
+
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("تشغيل تنبيهات الأذان", 20, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        TextView subtitle = label(SalatiSettings.adhanEnabled(this) ? "التنبيهات مفعّلة للصلوات المختارة" : "التنبيهات غير مفعلة", 13, theme.secondaryText, Typeface.BOLD);
+        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View notificationPanel(String title, int iconResource, View content, String meta) {
+        LinearLayout panel = vertical();
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        panel.setBackground(round(theme.panel, 12, theme.border));
+        elevate(panel, 2);
+
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        if (meta != null) {
+            TextView metaView = label(meta, 13, theme.secondaryText, Typeface.BOLD);
+            metaView.setGravity(Gravity.LEFT);
+            header.addView(metaView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        } else {
+            View spacer = new View(this);
+            header.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1));
+        }
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView icon = iconImage(iconResource, theme.accent, 22);
+        titleRow.addView(icon, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        TextView titleView = label(title, 16, theme.accent, Typeface.BOLD);
+        titleView.setGravity(Gravity.RIGHT);
+        titleRow.addView(titleView, wrap());
+        header.addView(titleRow, wrap());
+        panel.addView(header, fullWidthWithMargins(0, 0, 0, dp(14)));
+        panel.addView(content, fullWidth());
+        return panel;
     }
 
     private View soundOptions() {
         LinearLayout list = vertical();
-        list.addView(optionButton("الأذان الثاني", "المقطع الأساسي من نسخة iPhone", SalatiSettings.SOUND_ADHAN_SECOND, SalatiSettings.adhanSound(this), () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_SECOND)));
-        list.addView(optionButton("الأذان الأول", "الصوت السابق ضمن المجموعة", SalatiSettings.SOUND_ADHAN_FIRST, SalatiSettings.adhanSound(this), () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_FIRST)));
-        list.addView(optionButton("رسالة إشعار", "تنبيه أخف لمن لا يريد الأذان الكامل", SalatiSettings.SOUND_SOFT, SalatiSettings.adhanSound(this), () -> setAdhanSound(SalatiSettings.SOUND_SOFT)));
-        list.addView(optionButton("صوت النظام", "تنبيه Android الافتراضي", SalatiSettings.SOUND_SYSTEM, SalatiSettings.adhanSound(this), () -> setAdhanSound(SalatiSettings.SOUND_SYSTEM)));
-        list.addView(smallFullButton("اختبار التنبيه بعد 5 ثواني", v -> sendPreviewNotification()), fullWidthWithMargins(0, 10, 0, 0));
+        String selected = SalatiSettings.adhanSound(this);
+        list.addView(soundOptionButton("الأذان الثاني", R.drawable.ic_notification_volume, SalatiSettings.SOUND_ADHAN_SECOND, selected, () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_SECOND)), fullWidth());
+        list.addView(soundDivider(), fullWidth());
+        list.addView(soundOptionButton("الأذان الأول", R.drawable.ic_notification_volume, SalatiSettings.SOUND_ADHAN_FIRST, selected, () -> setAdhanSound(SalatiSettings.SOUND_ADHAN_FIRST)), fullWidth());
+        list.addView(soundDivider(), fullWidth());
+        list.addView(soundOptionButton("رسالة إشعار", R.drawable.ic_tab_sparkle, SalatiSettings.SOUND_SOFT, selected, () -> setAdhanSound(SalatiSettings.SOUND_SOFT)), fullWidth());
+        list.addView(soundDivider(), fullWidth());
+        list.addView(soundOptionButton("صوت النظام", R.drawable.ic_notification_phone, SalatiSettings.SOUND_SYSTEM, selected, () -> setAdhanSound(SalatiSettings.SOUND_SYSTEM)), fullWidth());
+        list.addView(previewAdhanButton(), fullWidthWithMargins(0, dp(14), 0, 0));
         return list;
+    }
+
+    private View soundOptionButton(String title, int iconResource, String value, String selectedValue, Runnable action) {
+        boolean selected = value.equals(selectedValue);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), 0, dp(14), 0);
+        row.setBackground(round(selected ? theme.activeRow : Color.TRANSPARENT, 10, selected ? theme.activeBorder : Color.TRANSPARENT));
+        row.setOnClickListener(v -> action.run());
+
+        ImageView icon = iconImage(selected ? R.drawable.ic_notification_check : iconResource, selected ? theme.accent : theme.secondaryText, 22);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(56)));
+        TextView text = label(title, 18, selected ? theme.accent : theme.primaryText, Typeface.BOLD);
+        text.setGravity(Gravity.RIGHT);
+        text.setIncludeFontPadding(false);
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View soundDivider() {
+        View divider = new View(this);
+        divider.setBackgroundColor(theme.border);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        params.setMargins(dp(12), 0, dp(12), 0);
+        divider.setLayoutParams(params);
+        return divider;
+    }
+
+    private View previewAdhanButton() {
+        LinearLayout button = new LinearLayout(this);
+        button.setOrientation(LinearLayout.HORIZONTAL);
+        button.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setPadding(dp(16), dp(12), dp(16), dp(12));
+        button.setBackground(round(theme.accent, 10, theme.activeBorder));
+        button.setOnClickListener(v -> sendPreviewNotification());
+
+        ImageView icon = iconImage(R.drawable.ic_notification_volume, AppTheme.withAlpha(theme.primaryText, 0.26), 26);
+        button.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(52)));
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("اختبار الأذان بعد 5 ثواني", 18, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        TextView subtitle = label("اقفل الشاشة بسرعة وتأكد من الصوت المختار", 12, AppTheme.withAlpha(theme.primaryText, 0.62), Typeface.BOLD);
+        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
+        button.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return button;
     }
 
     private void setAdhanSound(String sound) {
@@ -579,18 +749,145 @@ public class MainActivity extends Activity implements SensorEventListener {
         DaySchedule today = PrayerEngine.schedule(PrayerEngine.defaultDateKey());
         for (PrayerKey key : PrayerEngine.PRAYER_ORDER) {
             String time = today.times.get(key);
-            list.addView(togglePanel(
-                    key.title + "  " + (time == null ? "--:--" : time),
-                    "تنبيه الأذان لهذه الصلاة",
-                    SalatiSettings.prayerEnabled(this, key),
-                    () -> {
-                        SalatiSettings.setPrayerEnabled(this, key, !SalatiSettings.prayerEnabled(this, key));
-                        PrayerNotificationScheduler.scheduleAll(this);
-                        rebuildContent();
-                    }
-            ), fullWidthWithMargins(0, 0, 0, 8));
+            list.addView(prayerToggleRow(key, time == null ? "--:--" : time), fullWidthWithMargins(0, 0, 0, dp(10)));
         }
         return list;
+    }
+
+    private View prayerToggleRow(PrayerKey key, String time) {
+        boolean enabled = SalatiSettings.prayerEnabled(this, key);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), 0, dp(16), 0);
+        row.setBackground(round(enabled ? theme.activeRow : theme.row, 10, enabled ? theme.activeBorder : Color.TRANSPARENT));
+        row.setOnClickListener(v -> {
+            SalatiSettings.setPrayerEnabled(this, key, !SalatiSettings.prayerEnabled(this, key));
+            PrayerNotificationScheduler.scheduleAll(this);
+            rebuildContent();
+        });
+        row.addView(switchPill(enabled), new LinearLayout.LayoutParams(dp(72), dp(42)));
+        TextView timeView = label(time, 20, theme.secondaryText, Typeface.BOLD);
+        timeView.setGravity(Gravity.RIGHT);
+        timeView.setIncludeFontPadding(false);
+        row.addView(timeView, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        TextView title = label(key.title, 20, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        title.setIncludeFontPadding(false);
+        row.addView(title, new LinearLayout.LayoutParams(dp(104), LinearLayout.LayoutParams.WRAP_CONTENT));
+        return row;
+    }
+
+    private String enabledPrayerSummary() {
+        int enabled = 0;
+        for (PrayerKey key : PrayerEngine.PRAYER_ORDER) {
+            if (SalatiSettings.prayerEnabled(this, key)) {
+                enabled++;
+            }
+        }
+        return enabled + " من " + PrayerEngine.PRAYER_ORDER.length + " مفعّلة";
+    }
+
+    private View notificationThemesPanel() {
+        LinearLayout panel = vertical();
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        panel.setBackground(round(theme.panel, 12, theme.border));
+        elevate(panel, 2);
+        TextView header = label("أنماط التطبيق", 17, theme.accent, Typeface.BOLD);
+        panel.addView(header, fullWidthWithMargins(0, 0, 0, dp(14)));
+
+        LinearLayout headings = new LinearLayout(this);
+        headings.setOrientation(LinearLayout.HORIZONTAL);
+        headings.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        TextView day = label("نهاري", 15, theme.accent, Typeface.BOLD);
+        day.setGravity(Gravity.CENTER);
+        TextView night = label("ليلي", 15, theme.accent, Typeface.BOLD);
+        night.setGravity(Gravity.CENTER);
+        headings.addView(day, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        headings.addView(night, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        panel.addView(headings, fullWidthWithMargins(0, 0, 0, dp(8)));
+
+        ThemePalette[] dayChoices = AppTheme.dayChoices();
+        ThemePalette[] nightChoices = AppTheme.nightChoices();
+        int count = Math.max(dayChoices.length, nightChoices.length);
+        for (int i = 0; i < count; i++) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+            if (i < dayChoices.length) {
+                row.addView(themeTile(dayChoices[i]), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            }
+            if (i < nightChoices.length) {
+                row.addView(themeTile(nightChoices[i]), new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+            }
+            panel.addView(row, fullWidthWithMargins(0, 0, 0, dp(12)));
+        }
+        TextView footer = label("اختر نمطًا نهاريًا ونمطًا ليليًا، والتطبيق يبدّل بينهم تلقائيًا حسب الوقت.", 13, theme.secondaryText, Typeface.BOLD);
+        footer.setGravity(Gravity.CENTER);
+        panel.addView(footer, fullWidth());
+        return panel;
+    }
+
+    private View themeTile(ThemePalette choice) {
+        String selectedId = prefs.getString(choice.night ? AppTheme.NIGHT_THEME_KEY : AppTheme.DAY_THEME_KEY, choice.night ? AppTheme.DEFAULT_NIGHT : AppTheme.DEFAULT_DAY);
+        boolean selected = choice.id.equals(selectedId);
+        LinearLayout tile = vertical();
+        tile.setPadding(dp(8), dp(8), dp(8), dp(10));
+        tile.setBackground(round(selected ? theme.activeRow : theme.row, 12, selected ? theme.activeBorder : Color.TRANSPARENT));
+        tile.setOnClickListener(v -> {
+            AppTheme.select(this, choice);
+            SalatiWidgetUpdater.updateAll(this);
+            rebuildContent();
+        });
+
+        FrameLayout preview = new FrameLayout(this);
+        GradientDrawable previewBackground = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[]{choice.backgroundTop, choice.backgroundMiddle, choice.backgroundBottom}
+        );
+        previewBackground.setCornerRadius(dp(10));
+        preview.setBackground(previewBackground);
+        TextView previewTime = label("04:08", 15, choice.accent, Typeface.BOLD);
+        previewTime.setGravity(Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        previewTime.setPadding(dp(10), 0, dp(10), 0);
+        preview.addView(previewTime, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        ImageView previewIcon = iconImage(choice.night ? R.drawable.ic_prayer_moon : R.drawable.ic_tab_sparkle, choice.night ? Color.WHITE : choice.accent, 20);
+        FrameLayout.LayoutParams iconParams = new FrameLayout.LayoutParams(dp(42), dp(42), Gravity.RIGHT | Gravity.CENTER_VERTICAL);
+        preview.addView(previewIcon, iconParams);
+        tile.addView(preview, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(62)));
+
+        LinearLayout text = new LinearLayout(this);
+        text.setOrientation(LinearLayout.HORIZONTAL);
+        text.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        text.setGravity(Gravity.CENTER_VERTICAL);
+        TextView mark = label(selected ? "✓" : "○", 18, selected ? theme.accent : theme.secondaryText, Typeface.BOLD);
+        mark.setGravity(Gravity.CENTER);
+        text.addView(mark, new LinearLayout.LayoutParams(dp(30), dp(42)));
+        LinearLayout labels = vertical();
+        TextView title = label(choice.title, 14, theme.primaryText, Typeface.BOLD);
+        singleLine(title);
+        labels.addView(title, fullWidth());
+        TextView subtitle = label(choice.modeTitle, 10, theme.secondaryText, Typeface.BOLD);
+        singleLine(subtitle);
+        labels.addView(subtitle, fullWidth());
+        text.addView(labels, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        tile.addView(text, fullWidthWithMargins(0, dp(8), 0, 0));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(dp(4), 0, dp(4), 0);
+        tile.setLayoutParams(params);
+        return tile;
+    }
+
+    private View switchPill(boolean on) {
+        FrameLayout pill = new FrameLayout(this);
+        pill.setBackground(round(on ? theme.accent : theme.control, 22, on ? theme.activeBorder : theme.border));
+        View knob = new View(this);
+        knob.setBackground(round(Color.WHITE, 16, Color.TRANSPARENT));
+        FrameLayout.LayoutParams knobParams = new FrameLayout.LayoutParams(dp(32), dp(32), on ? Gravity.RIGHT | Gravity.CENTER_VERTICAL : Gravity.LEFT | Gravity.CENTER_VERTICAL);
+        knobParams.setMargins(dp(4), dp(4), dp(4), dp(4));
+        pill.addView(knob, knobParams);
+        return pill;
     }
 
     private View themeChoices() {
@@ -1300,5 +1597,10 @@ public class MainActivity extends Activity implements SensorEventListener {
         Tab(String title) {
             this.title = title;
         }
+    }
+
+    private enum NotificationPane {
+        ADHAN,
+        THEMES
     }
 }

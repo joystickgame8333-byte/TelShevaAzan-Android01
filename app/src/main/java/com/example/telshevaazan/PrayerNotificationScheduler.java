@@ -29,7 +29,7 @@ final class PrayerNotificationScheduler {
     static final String KIND_ADHAN = "adhan";
     static final String KIND_NAFAHAT = "nafahat";
     static final String CHANNEL_ADHAN = "salati_prayers_jazi";
-    static final String CHANNEL_NAFAHAT = "salati_adhkar";
+    static final String CHANNEL_NAFAHAT = "salati_adhkar_sound";
     private static final int MAX_PENDING = 60;
 
     private PrayerNotificationScheduler() {}
@@ -108,15 +108,16 @@ final class PrayerNotificationScheduler {
                 resource = R.raw.adhan_mohamed_jazi_android;
                 break;
             case SalatiSettings.SOUND_SOFT:
+            case SalatiSettings.SOUND_NAFAHAT_1:
                 resource = R.raw.notification_soft_01;
                 break;
-            case "nafahat2":
+            case SalatiSettings.SOUND_NAFAHAT_2:
                 resource = R.raw.notification_soft_02;
                 break;
-            case "nafahat3":
+            case SalatiSettings.SOUND_NAFAHAT_3:
                 resource = R.raw.notification_soft_03;
                 break;
-            case "nafahat4":
+            case SalatiSettings.SOUND_NAFAHAT_4:
                 resource = R.raw.notification_soft_04;
                 break;
             default:
@@ -128,7 +129,7 @@ final class PrayerNotificationScheduler {
 
     static void ensureChannels(Context context) {
         ensureChannel(context, KIND_ADHAN, SalatiSettings.adhanSound(context));
-        ensureChannel(context, KIND_NAFAHAT, "nafahat2");
+        ensureChannel(context, KIND_NAFAHAT, SalatiSettings.nafahatSound(context));
     }
 
     static void ensureChannel(Context context, String kind, String sound) {
@@ -142,13 +143,14 @@ final class PrayerNotificationScheduler {
         }
 
         if (KIND_NAFAHAT.equals(kind)) {
+            String resolvedSound = sound == null ? SalatiSettings.SOUND_NAFAHAT_1 : sound;
             AudioAttributes nafahatAttributes = new AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                     .build();
-            NotificationChannel nafahat = new NotificationChannel(channelId(kind, sound), "أذكار ونفحات", NotificationManager.IMPORTANCE_DEFAULT);
+            NotificationChannel nafahat = new NotificationChannel(channelId(kind, resolvedSound), "أذكار ونفحات", NotificationManager.IMPORTANCE_DEFAULT);
             nafahat.setDescription("تذكير روحي خفيف خلال اليوم");
-            nafahat.setSound(soundUri(context, "nafahat2"), nafahatAttributes);
+            nafahat.setSound(soundUri(context, resolvedSound), nafahatAttributes);
             manager.createNotificationChannel(nafahat);
             return;
         }
@@ -166,7 +168,8 @@ final class PrayerNotificationScheduler {
 
     static String channelId(String kind, String sound) {
         if (KIND_NAFAHAT.equals(kind)) {
-            return CHANNEL_NAFAHAT;
+            String resolvedSound = sound == null ? SalatiSettings.SOUND_NAFAHAT_1 : sound;
+            return CHANNEL_NAFAHAT + "_" + resolvedSound.replaceAll("[^a-zA-Z0-9_]", "_");
         }
         String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN : sound;
         return CHANNEL_ADHAN + "_" + resolvedSound.replaceAll("[^a-zA-Z0-9_]", "_");
@@ -219,6 +222,7 @@ final class PrayerNotificationScheduler {
 
         int interval = SalatiSettings.nafahatInterval(context);
         String textType = SalatiSettings.nafahatText(context);
+        String sound = SalatiSettings.nafahatSound(context);
         Calendar calendar = Calendar.getInstance(PrayerEngine.TIME_ZONE);
         calendar.setTime(now);
         calendar.add(Calendar.MINUTE, interval);
@@ -228,7 +232,7 @@ final class PrayerNotificationScheduler {
         while (calendar.getTime().before(end) && events.size() < 24) {
             Date date = calendar.getTime();
             if (!isWithinQuietWindow(context, date) && !isNearPrayerTime(date)) {
-                events.add(Event.nafahat(date, NafahatContent.message(textType, index, date)));
+                events.add(Event.nafahat(date, NafahatContent.message(textType, index, date), sound));
                 index++;
             }
             calendar.add(Calendar.MINUTE, interval);
@@ -294,12 +298,12 @@ final class PrayerNotificationScheduler {
             );
         }
 
-        static Event nafahat(Date date, NafahatContent.Message message) {
+        static Event nafahat(Date date, NafahatContent.Message message, String sound) {
             return new Event(
                     KIND_NAFAHAT,
                     message.title,
                     message.body,
-                    "nafahat2",
+                    sound,
                     date,
                     42160 + Math.abs(PrayerEngine.calendarIdentifier(date).hashCode() % 20)
             );

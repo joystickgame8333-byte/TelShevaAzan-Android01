@@ -38,8 +38,8 @@ import java.io.IOException;
 import java.util.Date;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.55";
-    private static final String APP_BUILD = "146";
+    private static final String APP_VERSION = "0.6.56";
+    private static final String APP_BUILD = "147";
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -936,39 +936,179 @@ public class MainActivity extends Activity implements SensorEventListener {
         ScrollView scroll = new ScrollView(this);
         LinearLayout root = pageRoot();
         scroll.addView(root);
-        root.addView(pageHeader("أذكار", "تذكير روحي خفيف خلال اليوم", "أذكار"), fullWidth());
-
-        root.addView(togglePanel(
-                "تشغيل الأذكار",
-                SalatiSettings.nafahatEnabled(this) ? "تذكير روحي خفيف " + intervalTitle(SalatiSettings.nafahatInterval(this)) : "تذكير الأذكار متوقف",
-                SalatiSettings.nafahatEnabled(this),
-                () -> {
-                    boolean next = !SalatiSettings.nafahatEnabled(this);
-                    SalatiSettings.prefs(this).edit().putBoolean(SalatiSettings.KEY_NAFAHAT_ENABLED, next).apply();
-                    if (next) {
-                        requestNotificationPermissionIfNeeded();
-                    }
-                    PrayerNotificationScheduler.scheduleAll(this);
-                    rebuildContent();
-                }
-        ), fullWidthWithMargins(0, 0, 0, 12));
-
-        root.addView(panel("وقت الأذكار", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("نوع الذكر", nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, 12));
-        root.addView(panel("وقت الهدوء", quietOptions()), fullWidthWithMargins(0, 0, 0, dp(16)));
+        root.addView(adhkarHeader(), fullWidthWithMargins(0, dp(12), 0, dp(16)));
+        root.addView(adhkarMasterToggle(), fullWidthWithMargins(0, 0, 0, dp(18)));
+        root.addView(adhkarPanel("صوت الأذكار", null, nafahatSoundOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
+        root.addView(adhkarPanel("اختبار التذكير", null, previewNafahatPanel()), fullWidthWithMargins(0, 0, 0, dp(14)));
+        root.addView(adhkarPanel("وقت الأذكار", "اختر كل كم وقت يصلك ذكر خفيف", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
+        root.addView(adhkarPanel("نوع الذكر", null, nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
+        root.addView(adhkarPanel("وقت الهدوء", null, quietOptions()), fullWidthWithMargins(0, 0, 0, dp(16)));
         return scroll;
+    }
+
+    private View adhkarHeader() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(6), 0, dp(6), 0);
+
+        FrameLayout iconBox = new FrameLayout(this);
+        iconBox.setBackground(round(theme.control, 12, theme.border));
+        ImageView icon = iconImage(R.drawable.ic_tab_sparkle, theme.accent, 25);
+        iconBox.addView(icon, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        row.addView(iconBox, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("أذكار", 34, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        TextView subtitle = label("تذكير روحي خفيف خلال اليوم", 15, theme.accent, Typeface.BOLD);
+        subtitle.setIncludeFontPadding(false);
+        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View adhkarMasterToggle() {
+        boolean enabled = SalatiSettings.nafahatEnabled(this);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(18), dp(16), dp(18), dp(16));
+        row.setBackground(round(theme.panel, 12, enabled ? theme.activeBorder : theme.border));
+        row.setOnClickListener(v -> {
+            boolean next = !SalatiSettings.nafahatEnabled(this);
+            SalatiSettings.prefs(this).edit().putBoolean(SalatiSettings.KEY_NAFAHAT_ENABLED, next).apply();
+            if (next) {
+                requestNotificationPermissionIfNeeded();
+            }
+            PrayerNotificationScheduler.scheduleAll(this);
+            rebuildContent();
+        });
+
+        row.addView(switchPill(enabled), new LinearLayout.LayoutParams(dp(74), dp(42)));
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("تشغيل الأذكار", 21, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        String subtitle = enabled
+                ? "تذكير روحي خفيف " + intervalTitle(SalatiSettings.nafahatInterval(this))
+                : "تذكير الأذكار متوقف";
+        TextView subtitleView = label(subtitle, 13, theme.secondaryText, Typeface.BOLD);
+        text.addView(subtitleView, fullWidthWithMargins(0, dp(8), 0, 0));
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View adhkarPanel(String title, String subtitle, View content) {
+        LinearLayout panel = vertical();
+        panel.setGravity(Gravity.RIGHT);
+        panel.setPadding(dp(16), dp(16), dp(16), dp(16));
+        panel.setBackground(round(theme.panel, 12, theme.border));
+        elevate(panel, 2);
+        TextView header = label(title, 16, theme.accent, Typeface.BOLD);
+        header.setGravity(Gravity.RIGHT);
+        panel.addView(header, fullWidth());
+        if (subtitle != null) {
+            TextView subtitleView = label(subtitle, 12, theme.secondaryText, Typeface.BOLD);
+            subtitleView.setGravity(Gravity.RIGHT);
+            panel.addView(subtitleView, fullWidthWithMargins(0, dp(8), 0, dp(10)));
+        } else {
+            View spacer = new View(this);
+            panel.addView(spacer, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12)));
+        }
+        panel.addView(content, fullWidth());
+        return panel;
+    }
+
+    private View nafahatSoundOptions() {
+        LinearLayout list = vertical();
+        String selected = SalatiSettings.nafahatSound(this);
+        String[][] values = {
+                {SalatiSettings.SOUND_NAFAHAT_1, "رسالة إشعار 1", "نغمة خفيفة وناعمة للأذكار", String.valueOf(R.drawable.ic_notification_volume)},
+                {SalatiSettings.SOUND_NAFAHAT_2, "رسالة إشعار 2", "جرس قصير بدون إزعاج", String.valueOf(R.drawable.ic_tab_bell)},
+                {SalatiSettings.SOUND_NAFAHAT_3, "رسالة إشعار 3", "لمعة صوتية هادئة", String.valueOf(R.drawable.ic_tab_sparkle)},
+                {SalatiSettings.SOUND_NAFAHAT_4, "رسالة إشعار 4", "تنبيه لطيف ومختصر", String.valueOf(R.drawable.ic_adhkar_alarm)},
+                {SalatiSettings.SOUND_SYSTEM, "صوت النظام", "تنبيه قصير وخفيف من النظام", String.valueOf(R.drawable.ic_notification_phone)}
+        };
+        for (int i = 0; i < values.length; i++) {
+            String[] value = values[i];
+            list.addView(adhkarOptionButton(value[1], value[2], Integer.parseInt(value[3]), value[0], selected, () -> {
+                prefs.edit().putString(SalatiSettings.KEY_NAFAHAT_SOUND, value[0]).apply();
+                PrayerNotificationScheduler.ensureChannels(this);
+                PrayerNotificationScheduler.scheduleAll(this);
+                rebuildContent();
+            }), fullWidth());
+            if (i < values.length - 1) {
+                list.addView(adhkarDivider(), fullWidth());
+            }
+        }
+        return list;
+    }
+
+    private View previewNafahatPanel() {
+        LinearLayout button = new LinearLayout(this);
+        button.setOrientation(LinearLayout.HORIZONTAL);
+        button.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        button.setGravity(Gravity.CENTER_VERTICAL);
+        button.setPadding(dp(16), dp(14), dp(16), dp(14));
+        button.setBackground(round(theme.accent, 10, theme.activeBorder));
+        button.setOnClickListener(v -> {
+            v.animate().alpha(0.72f).setDuration(80)
+                    .withEndAction(() -> v.animate().alpha(1f).setDuration(180).start())
+                    .start();
+            Toast.makeText(this, "سيصل تذكير تجريبي بعد ثانيتين", Toast.LENGTH_SHORT).show();
+            sendPreviewNafahat();
+        });
+
+        ImageView icon = iconImage(R.drawable.ic_tab_sparkle, theme.primaryText, 26);
+        button.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(52)));
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView title = label("جرّب تذكير أذكار الآن", 18, theme.primaryText, Typeface.BOLD);
+        title.setIncludeFontPadding(false);
+        text.addView(title, fullWidth());
+        TextView subtitle = label("يوصل تذكير روحي تجريبي بعد ثانيتين", 12, AppTheme.withAlpha(theme.primaryText, 0.62), Typeface.BOLD);
+        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
+        button.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return button;
+    }
+
+    private void sendPreviewNafahat() {
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestNotificationPermissionIfNeeded();
+        }
+        Handler previewHandler = new Handler(Looper.getMainLooper());
+        previewHandler.postDelayed(() -> {
+            NafahatContent.Message message = NafahatContent.message(SalatiSettings.nafahatText(this), 0, now);
+            android.content.Intent intent = new android.content.Intent(this, PrayerNotificationReceiver.class);
+            intent.setAction(PrayerNotificationScheduler.ACTION_NOTIFY);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_KIND, PrayerNotificationScheduler.KIND_NAFAHAT);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_TITLE, message.title);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_BODY, message.body);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_SOUND, SalatiSettings.nafahatSound(this));
+            sendBroadcast(intent);
+        }, 2000);
     }
 
     private View nafahatIntervalOptions() {
         LinearLayout list = vertical();
         int selected = SalatiSettings.nafahatInterval(this);
         int[] values = {30, 60, 120, 180};
-        for (int value : values) {
-            list.addView(optionButton(intervalTitle(value), intervalSubtitle(value), String.valueOf(value), String.valueOf(selected), () -> {
+        for (int i = 0; i < values.length; i++) {
+            int value = values[i];
+            list.addView(adhkarOptionButton(intervalTitle(value), intervalSubtitle(value), R.drawable.ic_tab_clock, String.valueOf(value), String.valueOf(selected), () -> {
                 prefs.edit().putInt(SalatiSettings.KEY_NAFAHAT_INTERVAL, value).apply();
                 PrayerNotificationScheduler.scheduleAll(this);
                 rebuildContent();
-            }));
+            }), fullWidth());
+            if (i < values.length - 1) {
+                list.addView(adhkarDivider(), fullWidth());
+            }
         }
         return list;
     }
@@ -977,19 +1117,22 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout list = vertical();
         String selected = SalatiSettings.nafahatText(this);
         String[][] values = {
-                {"mixed", "منوّع", "يتغير بين صلاة واستغفار وتسبيح ودعاء"},
-                {"salawat", "الصلاة على النبي", "اللهم صل وسلم على نبينا محمد"},
-                {"istighfar", "استغفار", "أستغفر الله وأتوب إليه"},
-                {"tasbih", "تسبيح", "سبحان الله وبحمده"},
-                {"dua", "أدعية قصيرة", "أدعية خفيفة كل فترة"},
-                {"quran", "آيات وتذكير", "آيات قصيرة ومعانٍ لطيفة"}
+                {"protection", "تحصين", "أذكار تحفظ القلب وتطمئنه", String.valueOf(R.drawable.ic_adhkar_shield)},
+                {"gratitude", "شكر", "تذكير بالحمد والرضا", String.valueOf(R.drawable.ic_prayer_sun)},
+                {"quran", "آيات وتذكير", "آيات قصيرة ومعانٍ لطيفة", String.valueOf(R.drawable.ic_adhkar_book)},
+                {"lightReminders", "إشعارات خفيفة", "عبارات إيمانية قصيرة تصل بهدوء", String.valueOf(R.drawable.ic_adhkar_alarm)},
+                {"mixed", "منوّع", "يتغير بين صلاة واستغفار وتسبيح ودعاء", String.valueOf(R.drawable.ic_tab_sparkle)}
         };
-        for (String[] value : values) {
-            list.addView(optionButton(value[1], value[2], value[0], selected, () -> {
+        for (int i = 0; i < values.length; i++) {
+            String[] value = values[i];
+            list.addView(adhkarOptionButton(value[1], value[2], Integer.parseInt(value[3]), value[0], selected, () -> {
                 prefs.edit().putString(SalatiSettings.KEY_NAFAHAT_TEXT, value[0]).apply();
                 PrayerNotificationScheduler.scheduleAll(this);
                 rebuildContent();
-            }));
+            }), fullWidth());
+            if (i < values.length - 1) {
+                list.addView(adhkarDivider(), fullWidth());
+            }
         }
         return list;
     }
@@ -998,18 +1141,56 @@ public class MainActivity extends Activity implements SensorEventListener {
         LinearLayout list = vertical();
         String selected = SalatiSettings.quietWindow(this);
         String[][] values = {
-                {"none", "بدون هدوء", "تعمل الأذكار طوال اليوم"},
-                {"lateNight", "راحة الليل", "تتوقف من 11 ليلًا إلى 6 صباحًا"},
-                {"midnight", "هدوء عميق", "تتوقف من 12 ليلًا إلى 7 صباحًا"}
+                {"none", "بدون هدوء", "تعمل الأذكار طوال اليوم", String.valueOf(R.drawable.ic_tab_bell)},
+                {"lateNight", "راحة الليل", "تتوقف من 11 ليلًا إلى 6 صباحًا", String.valueOf(R.drawable.ic_prayer_moon)},
+                {"midnight", "هدوء عميق", "تتوقف من 12 ليلًا إلى 7 صباحًا", String.valueOf(R.drawable.ic_prayer_moon)}
         };
-        for (String[] value : values) {
-            list.addView(optionButton(value[1], value[2], value[0], selected, () -> {
+        for (int i = 0; i < values.length; i++) {
+            String[] value = values[i];
+            list.addView(adhkarOptionButton(value[1], value[2], Integer.parseInt(value[3]), value[0], selected, () -> {
                 prefs.edit().putString(SalatiSettings.KEY_NAFAHAT_QUIET, value[0]).apply();
                 PrayerNotificationScheduler.scheduleAll(this);
                 rebuildContent();
-            }));
+            }), fullWidth());
+            if (i < values.length - 1) {
+                list.addView(adhkarDivider(), fullWidth());
+            }
         }
         return list;
+    }
+
+    private View adhkarOptionButton(String title, String subtitle, int iconResource, String value, String selectedValue, Runnable action) {
+        boolean selected = value.equals(selectedValue);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), 0, dp(12), 0);
+        row.setBackground(round(selected ? theme.activeRow : theme.row, 10, selected ? theme.activeBorder : Color.TRANSPARENT));
+        row.setOnClickListener(v -> action.run());
+
+        ImageView icon = iconImage(selected ? R.drawable.ic_notification_check : iconResource, selected ? theme.accent : theme.secondaryText, 22);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(64)));
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        TextView titleView = label(title, 19, selected ? theme.accent : theme.primaryText, Typeface.BOLD);
+        titleView.setIncludeFontPadding(false);
+        singleLine(titleView);
+        text.addView(titleView, fullWidth());
+        TextView subtitleView = label(subtitle, 12, theme.secondaryText, Typeface.BOLD);
+        singleLine(subtitleView);
+        text.addView(subtitleView, fullWidthWithMargins(0, dp(6), 0, 0));
+        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return row;
+    }
+
+    private View adhkarDivider() {
+        View divider = new View(this);
+        divider.setBackgroundColor(theme.border);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1);
+        params.setMargins(dp(12), 0, dp(12), 0);
+        divider.setLayoutParams(params);
+        return divider;
     }
 
     private View qiblaContent() {

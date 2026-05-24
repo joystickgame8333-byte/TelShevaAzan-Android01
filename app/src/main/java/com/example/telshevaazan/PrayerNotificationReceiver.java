@@ -30,7 +30,14 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
             body = "";
         }
 
-        PrayerNotificationScheduler.ensureChannel(context, kind, sound);
+        String resolvedSound = sound;
+        if (resolvedSound == null) {
+            resolvedSound = PrayerNotificationScheduler.KIND_NAFAHAT.equals(kind)
+                    ? SalatiSettings.nafahatSound(context)
+                    : SalatiSettings.SOUND_ADHAN;
+        }
+
+        PrayerNotificationScheduler.ensureChannel(context, kind, resolvedSound);
 
         Intent openIntent = new Intent(context, MainActivity.class);
         PendingIntent contentIntent = PendingIntent.getActivity(
@@ -40,14 +47,12 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        String channel = PrayerNotificationScheduler.KIND_NAFAHAT.equals(kind)
-                ? PrayerNotificationScheduler.CHANNEL_NAFAHAT
-                : PrayerNotificationScheduler.channelId(kind, sound);
+        String channel = PrayerNotificationScheduler.channelId(kind, resolvedSound);
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
                 ? new Notification.Builder(context, channel)
                 : new Notification.Builder(context);
 
-        Uri soundUri = PrayerNotificationScheduler.soundUri(context, sound == null ? SalatiSettings.SOUND_ADHAN : sound);
+        Uri soundUri = PrayerNotificationScheduler.soundUri(context, resolvedSound);
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(body)

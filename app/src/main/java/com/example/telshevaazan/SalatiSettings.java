@@ -14,9 +14,14 @@ final class SalatiSettings {
     static final String KEY_NAFAHAT_INTERVAL = "prayer_notifications_nafahat_interval_minutes";
     static final String KEY_NAFAHAT_TEXT = "prayer_notifications_nafahat_text";
     static final String KEY_NAFAHAT_QUIET = "prayer_notifications_nafahat_quiet_window";
+    static final String KEY_NAFAHAT_SOUND = "prayer_notifications_nafahat_sound";
     static final String SOUND_ADHAN = "mohamedJaziAdhan";
     static final String SOUND_ADHAN_SECOND = "bundledAdhan";
     static final String SOUND_ADHAN_FIRST = "originalAdhan";
+    static final String SOUND_NAFAHAT_1 = "nafahat1";
+    static final String SOUND_NAFAHAT_2 = "nafahat2";
+    static final String SOUND_NAFAHAT_3 = "nafahat3";
+    static final String SOUND_NAFAHAT_4 = "nafahat4";
     static final String SOUND_SOFT = "softDhikr";
     static final String SOUND_SYSTEM = "system";
     static final String TEXT_MIXED = "mixed";
@@ -42,11 +47,26 @@ final class SalatiSettings {
     }
 
     static String nafahatText(Context context) {
-        return prefs(context).getString(KEY_NAFAHAT_TEXT, TEXT_MIXED);
+        String value = prefs(context).getString(KEY_NAFAHAT_TEXT, TEXT_MIXED);
+        if ("protection".equals(value) || "gratitude".equals(value) || "quran".equals(value)
+                || "lightReminders".equals(value) || TEXT_MIXED.equals(value)) {
+            return value;
+        }
+        return TEXT_MIXED;
     }
 
     static String quietWindow(Context context) {
         return prefs(context).getString(KEY_NAFAHAT_QUIET, QUIET_LATE_NIGHT);
+    }
+
+    static String nafahatSound(Context context) {
+        String value = prefs(context).getString(KEY_NAFAHAT_SOUND, SOUND_NAFAHAT_1);
+        if (SOUND_NAFAHAT_1.equals(value) || SOUND_NAFAHAT_2.equals(value)
+                || SOUND_NAFAHAT_3.equals(value) || SOUND_NAFAHAT_4.equals(value)
+                || SOUND_SYSTEM.equals(value)) {
+            return value;
+        }
+        return SOUND_NAFAHAT_1;
     }
 
     static String adhanSound(Context context) {
@@ -91,6 +111,7 @@ final class SalatiSettings {
                 .putInt(KEY_NAFAHAT_INTERVAL, 120)
                 .putString(KEY_NAFAHAT_TEXT, TEXT_MIXED)
                 .putString(KEY_NAFAHAT_QUIET, QUIET_LATE_NIGHT)
+                .putString(KEY_NAFAHAT_SOUND, SOUND_NAFAHAT_1)
                 .apply();
     }
 }

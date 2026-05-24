@@ -28,7 +28,7 @@ final class PrayerNotificationScheduler {
     static final String EXTRA_SOUND = "sound";
     static final String KIND_ADHAN = "adhan";
     static final String KIND_NAFAHAT = "nafahat";
-    static final String CHANNEL_ADHAN = "salati_prayers_clean";
+    static final String CHANNEL_ADHAN = "salati_prayers_jazi";
     static final String CHANNEL_NAFAHAT = "salati_adhkar";
     private static final int MAX_PENDING = 60;
 
@@ -102,8 +102,10 @@ final class PrayerNotificationScheduler {
 
         int resource;
         switch (sound) {
+            case SalatiSettings.SOUND_ADHAN:
             case SalatiSettings.SOUND_ADHAN_FIRST:
-                resource = R.raw.adhan_original_android;
+            case SalatiSettings.SOUND_ADHAN_SECOND:
+                resource = R.raw.adhan_mohamed_jazi_android;
                 break;
             case SalatiSettings.SOUND_SOFT:
                 resource = R.raw.notification_soft_01;
@@ -117,7 +119,6 @@ final class PrayerNotificationScheduler {
             case "nafahat4":
                 resource = R.raw.notification_soft_04;
                 break;
-            case SalatiSettings.SOUND_ADHAN_SECOND:
             default:
                 resource = R.raw.adhan_mohamed_jazi_android;
                 break;
@@ -152,7 +153,7 @@ final class PrayerNotificationScheduler {
             return;
         }
 
-        String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN_SECOND : sound;
+        String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN : sound;
         AudioAttributes adhanAttributes = new AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -167,7 +168,7 @@ final class PrayerNotificationScheduler {
         if (KIND_NAFAHAT.equals(kind)) {
             return CHANNEL_NAFAHAT;
         }
-        String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN_SECOND : sound;
+        String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN : sound;
         return CHANNEL_ADHAN + "_" + resolvedSound.replaceAll("[^a-zA-Z0-9_]", "_");
     }
 

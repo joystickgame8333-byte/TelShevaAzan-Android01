@@ -47,7 +47,7 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
                 ? new Notification.Builder(context, channel)
                 : new Notification.Builder(context);
 
-        Uri soundUri = PrayerNotificationScheduler.soundUri(context, sound == null ? SalatiSettings.SOUND_ADHAN_SECOND : sound);
+        Uri soundUri = PrayerNotificationScheduler.soundUri(context, sound == null ? SalatiSettings.SOUND_ADHAN : sound);
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(body)

@@ -17,6 +17,7 @@ final class SalatiSettings {
     static final String KEY_MINI_KHATMAH_ENABLED = "adhkar.miniKhatmah.enabled";
     static final String KEY_MINI_KHATMAH_PORTION = "adhkar.miniKhatmah.dailyPortion";
     static final String KEY_MINI_KHATMAH_START = "adhkar.miniKhatmah.startDate";
+    static final String SOUND_ADHAN = "mohamedJaziAdhan";
     static final String SOUND_ADHAN_SECOND = "bundledAdhan";
     static final String SOUND_ADHAN_FIRST = "originalAdhan";
     static final String SOUND_SOFT = "softDhikr";
@@ -52,7 +53,11 @@ final class SalatiSettings {
     }
 
     static String adhanSound(Context context) {
-        return prefs(context).getString(KEY_ADHAN_SOUND, SOUND_ADHAN_SECOND);
+        String value = prefs(context).getString(KEY_ADHAN_SOUND, SOUND_ADHAN);
+        if (SOUND_ADHAN_FIRST.equals(value) || SOUND_ADHAN_SECOND.equals(value)) {
+            return SOUND_ADHAN;
+        }
+        return value;
     }
 
     static Set<String> enabledPrayerIDs(Context context) {

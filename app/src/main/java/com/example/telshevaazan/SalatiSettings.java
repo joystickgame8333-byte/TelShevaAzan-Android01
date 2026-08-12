@@ -10,6 +10,7 @@ final class SalatiSettings {
     static final String KEY_ADHAN_ENABLED = "prayer_notifications_enabled";
     static final String KEY_ENABLED_PRAYERS = "prayer_notifications_enabled_prayers";
     static final String KEY_ADHAN_SOUND = "prayer_notifications_selected_sound";
+    static final String KEY_IQAMA_ENABLED = "prayer_notifications_iqama_enabled";
     static final String KEY_NAFAHAT_ENABLED = "prayer_notifications_nafahat_enabled";
     static final String KEY_NAFAHAT_INTERVAL = "prayer_notifications_nafahat_interval_minutes";
     static final String KEY_NAFAHAT_TEXT = "prayer_notifications_nafahat_text";
@@ -39,6 +40,10 @@ final class SalatiSettings {
 
     static boolean nafahatEnabled(Context context) {
         return prefs(context).getBoolean(KEY_NAFAHAT_ENABLED, false);
+    }
+
+    static boolean iqamaEnabled(Context context) {
+        return prefs(context).getBoolean(KEY_IQAMA_ENABLED, true);
     }
 
     static int nafahatInterval(Context context) {
@@ -106,6 +111,7 @@ final class SalatiSettings {
         }
         prefs(context).edit()
                 .putBoolean(KEY_ADHAN_ENABLED, true)
+                .putBoolean(KEY_IQAMA_ENABLED, true)
                 .putStringSet(KEY_ENABLED_PRAYERS, prayerIDs)
                 .putBoolean(KEY_NAFAHAT_ENABLED, true)
                 .putInt(KEY_NAFAHAT_INTERVAL, 120)

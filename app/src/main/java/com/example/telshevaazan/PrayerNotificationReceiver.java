@@ -13,7 +13,11 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (PrayerNotificationScheduler.ACTION_RESCHEDULE.equals(intent.getAction())
-                || Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
+                || Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())
+                || Intent.ACTION_DATE_CHANGED.equals(intent.getAction())
+                || Intent.ACTION_TIME_CHANGED.equals(intent.getAction())
+                || Intent.ACTION_TIMEZONE_CHANGED.equals(intent.getAction())
+                || Intent.ACTION_MY_PACKAGE_REPLACED.equals(intent.getAction())) {
             PrayerNotificationScheduler.scheduleAll(context);
             SalatiWidgetUpdater.updateAll(context);
             return;
@@ -30,12 +34,9 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
             body = "";
         }
 
-        String resolvedSound = sound;
-        if (resolvedSound == null) {
-            resolvedSound = PrayerNotificationScheduler.KIND_NAFAHAT.equals(kind)
-                    ? SalatiSettings.nafahatSound(context)
-                    : SalatiSettings.SOUND_ADHAN;
-        }
+        boolean silentKind = PrayerNotificationScheduler.KIND_NAFAHAT.equals(kind)
+                || PrayerNotificationScheduler.KIND_IQAMA.equals(kind);
+        String resolvedSound = silentKind ? null : (sound == null ? SalatiSettings.SOUND_ADHAN : sound);
 
         PrayerNotificationScheduler.ensureChannel(context, kind, resolvedSound);
 
@@ -52,7 +53,7 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
                 ? new Notification.Builder(context, channel)
                 : new Notification.Builder(context);
 
-        Uri soundUri = PrayerNotificationScheduler.soundUri(context, resolvedSound);
+        Uri soundUri = silentKind ? null : PrayerNotificationScheduler.soundUri(context, resolvedSound);
         builder.setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(title)
                 .setContentText(body)
@@ -61,7 +62,12 @@ public class PrayerNotificationReceiver extends BroadcastReceiver {
                 .setShowWhen(true)
                 .setWhen(System.currentTimeMillis());
         if (Build.VERSION.SDK_INT < 26) {
-            builder.setSound(soundUri);
+            if (silentKind) {
+                builder.setSound(null);
+                builder.setVibrate(new long[]{0, 180});
+            } else {
+                builder.setSound(soundUri);
+            }
             builder.setPriority(Notification.PRIORITY_HIGH);
         }
 

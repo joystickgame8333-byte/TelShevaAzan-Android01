@@ -2,11 +2,9 @@ package com.example.telshevaazan;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Collections;
 import java.util.Date;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,34 +47,37 @@ final class PrayerEngine {
             PrayerKey.ISHA
     };
 
-    private static final int TEL_SHEVA_OFFSET_MINUTES = 2;
-    private static final int DAYLIGHT_SAVING_OFFSET_MINUTES = 60;
-    private static final Map<String, Map<PrayerKey, String>> TEL_SHEVA_SCHEDULE = buildSchedule();
-
     private PrayerEngine() {}
-
-    static List<String> availableDateKeys() {
-        List<String> keys = new ArrayList<>(TEL_SHEVA_SCHEDULE.keySet());
-        Collections.sort(keys);
-        return keys;
-    }
 
     static String defaultDateKey() {
         return defaultDateKey(new Date());
     }
 
     static String defaultDateKey(Date date) {
-        String key = dateKey(date);
-        if (TEL_SHEVA_SCHEDULE.containsKey(key)) {
-            return key;
+        return dateKey(date);
+    }
+
+    static String automaticScheduleDateKey() {
+        return automaticScheduleDateKey(new Date());
+    }
+
+    static String automaticScheduleDateKey(Date now) {
+        String todayKey = dateKey(now);
+        DaySchedule today = schedule(todayKey);
+        String ishaTime = today.times.get(PrayerKey.ISHA);
+        if (ishaTime != null && !now.before(date(todayKey, ishaTime))) {
+            String tomorrowKey = dateKey(todayKey, 1);
+            return tomorrowKey == null ? todayKey : tomorrowKey;
         }
-        List<String> keys = availableDateKeys();
-        return keys.isEmpty() ? key : keys.get(0);
+        return todayKey;
     }
 
     static DaySchedule schedule(String dateKey) {
-        String resolved = TEL_SHEVA_SCHEDULE.containsKey(dateKey) ? dateKey : defaultDateKey();
-        return new DaySchedule(resolved, TEL_SHEVA_SCHEDULE.get(resolved));
+        if (!isValidDateKey(dateKey)) {
+            return new DaySchedule(dateKey == null ? "" : dateKey, Collections.emptyMap());
+        }
+        Date midday = date(dateKey, "12:00");
+        return new DaySchedule(dateKey, PalestinePrayerCalendar.schedule(midday));
     }
 
     static PrayerTime nextPrayer(String dateKey, Date now) {
@@ -98,6 +99,10 @@ final class PrayerEngine {
     static PrayerTime previousPrayer(String dateKey, Date now) {
         DaySchedule daySchedule = schedule(dateKey);
         List<PrayerTime> events = prayerEvents(daySchedule.dateKey);
+        int relationToToday = daySchedule.dateKey.compareTo(dateKey(now));
+        if (relationToToday > 0) {
+            return null;
+        }
         if (daySchedule.dateKey.equals(dateKey(now))) {
             PrayerTime previous = null;
             for (PrayerTime event : events) {
@@ -120,13 +125,31 @@ final class PrayerEngine {
     }
 
     static String dateKey(String dateKey, int offset) {
-        List<String> keys = availableDateKeys();
-        int index = keys.indexOf(dateKey);
-        int nextIndex = index + offset;
-        if (index < 0 || nextIndex < 0 || nextIndex >= keys.size()) {
+        if (!isValidDateKey(dateKey)) {
             return null;
         }
-        return keys.get(nextIndex);
+        Calendar calendar = Calendar.getInstance(TIME_ZONE, Locale.US);
+        calendar.setTime(date(dateKey, "12:00"));
+        calendar.add(Calendar.DAY_OF_MONTH, offset);
+        return dateKey(calendar.getTime());
+    }
+
+    static List<String> upcomingDateKeys(Date from, int count) {
+        if (count <= 0) {
+            return Collections.emptyList();
+        }
+        Calendar calendar = Calendar.getInstance(TIME_ZONE, Locale.US);
+        calendar.setTime(from);
+        calendar.set(Calendar.HOUR_OF_DAY, 12);
+        calendar.set(Calendar.MINUTE, 0);
+        calendar.set(Calendar.SECOND, 0);
+        calendar.set(Calendar.MILLISECOND, 0);
+        List<String> result = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            result.add(dateKey(calendar.getTime()));
+            calendar.add(Calendar.DAY_OF_MONTH, 1);
+        }
+        return result;
     }
 
     static Date date(String dateKey, String time) {
@@ -143,6 +166,21 @@ final class PrayerEngine {
                 0
         );
         return calendar.getTime();
+    }
+
+    private static boolean isValidDateKey(String dateKey) {
+        if (dateKey == null || !dateKey.matches("\\d{4}-\\d{2}-\\d{2}")) {
+            return false;
+        }
+        try {
+            SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+            formatter.setTimeZone(TIME_ZONE);
+            formatter.setLenient(false);
+            Date parsed = formatter.parse(dateKey);
+            return parsed != null && dateKey.equals(formatter.format(parsed));
+        } catch (java.text.ParseException ignored) {
+            return false;
+        }
     }
 
     static String dateKey(Date date) {
@@ -185,22 +223,35 @@ final class PrayerEngine {
     static int iqamaDelayMinutes(PrayerKey key) {
         switch (key) {
             case FAJR:
-                return 25;
+                return 24;
             case ASR:
-                return 17;
+                return 16;
             case MAGHRIB:
-                return 8;
+                return 7;
             case DHUHR:
             case ISHA:
             case SUNRISE:
             default:
-                return 15;
+                return 14;
         }
     }
 
+    static Date iqamaDate(PrayerTime prayer) {
+        return new Date(prayer.date.getTime() + (long) iqamaDelayMinutes(prayer.key) * 60000L);
+    }
+
     static String iqamaTime(PrayerTime prayer) {
-        long time = prayer.date.getTime() + (long) iqamaDelayMinutes(prayer.key) * 60000L;
-        return timeText(new Date(time), false);
+        return timeText(iqamaDate(prayer), false);
+    }
+
+    static PrayerTime activeIqama(Date now) {
+        for (PrayerTime prayer : prayerEvents(dateKey(now))) {
+            Date iqama = iqamaDate(prayer);
+            if (!now.before(prayer.date) && now.before(iqama)) {
+                return prayer;
+            }
+        }
+        return null;
     }
 
     static String calendarIdentifier(Date date) {
@@ -274,60 +325,4 @@ final class PrayerEngine {
         return result;
     }
 
-    private static Map<String, Map<PrayerKey, String>> buildSchedule() {
-        Map<String, List<String>> source = new LinkedHashMap<>();
-        source.put("2026-05-01", Arrays.asList("03:22", "04:50", "11:36", "15:15", "18:26", "19:49"));
-        source.put("2026-05-02", Arrays.asList("03:21", "04:49", "11:36", "15:15", "18:27", "19:50"));
-        source.put("2026-05-03", Arrays.asList("03:20", "04:48", "11:35", "15:15", "18:27", "19:51"));
-        source.put("2026-05-04", Arrays.asList("03:19", "04:47", "11:35", "15:15", "18:28", "19:52"));
-        source.put("2026-05-05", Arrays.asList("03:18", "04:46", "11:35", "15:15", "18:29", "19:53"));
-        source.put("2026-05-06", Arrays.asList("03:16", "04:45", "11:35", "15:15", "18:29", "19:54"));
-        source.put("2026-05-07", Arrays.asList("03:15", "04:44", "11:35", "15:15", "18:30", "19:55"));
-        source.put("2026-05-08", Arrays.asList("03:14", "04:43", "11:35", "15:15", "18:31", "19:56"));
-        source.put("2026-05-09", Arrays.asList("03:13", "04:43", "11:35", "15:15", "18:31", "19:57"));
-        source.put("2026-05-10", Arrays.asList("03:12", "04:42", "11:35", "15:15", "18:32", "19:58"));
-        source.put("2026-05-11", Arrays.asList("03:11", "04:41", "11:35", "15:15", "18:33", "19:59"));
-        source.put("2026-05-12", Arrays.asList("03:10", "04:40", "11:35", "15:15", "18:34", "20:00"));
-        source.put("2026-05-13", Arrays.asList("03:09", "04:40", "11:35", "15:15", "18:34", "20:01"));
-        source.put("2026-05-14", Arrays.asList("03:08", "04:39", "11:35", "15:15", "18:35", "20:02"));
-        source.put("2026-05-15", Arrays.asList("03:07", "04:38", "11:35", "15:15", "18:36", "20:03"));
-        source.put("2026-05-16", Arrays.asList("03:06", "04:38", "11:35", "15:15", "18:36", "20:04"));
-        source.put("2026-05-17", Arrays.asList("03:06", "04:37", "11:35", "15:15", "18:37", "20:04"));
-        source.put("2026-05-18", Arrays.asList("03:05", "04:37", "11:35", "15:15", "18:37", "20:05"));
-        source.put("2026-05-19", Arrays.asList("03:04", "04:36", "11:35", "15:16", "18:38", "20:06"));
-        source.put("2026-05-20", Arrays.asList("03:03", "04:35", "11:35", "15:16", "18:39", "20:07"));
-        source.put("2026-05-21", Arrays.asList("03:02", "04:35", "11:35", "15:16", "18:39", "20:08"));
-        source.put("2026-05-22", Arrays.asList("03:02", "04:34", "11:35", "15:16", "18:40", "20:09"));
-        source.put("2026-05-23", Arrays.asList("03:01", "04:34", "11:35", "15:16", "18:41", "20:10"));
-        source.put("2026-05-24", Arrays.asList("03:00", "04:34", "11:35", "15:16", "18:41", "20:11"));
-        source.put("2026-05-25", Arrays.asList("02:59", "04:33", "11:36", "15:16", "18:42", "20:11"));
-        source.put("2026-05-26", Arrays.asList("02:59", "04:33", "11:36", "15:16", "18:42", "20:12"));
-        source.put("2026-05-27", Arrays.asList("02:58", "04:32", "11:36", "15:16", "18:43", "20:13"));
-        source.put("2026-05-28", Arrays.asList("02:58", "04:32", "11:36", "15:16", "18:44", "20:14"));
-        source.put("2026-05-29", Arrays.asList("02:57", "04:32", "11:36", "15:16", "18:44", "20:15"));
-        source.put("2026-05-30", Arrays.asList("02:57", "04:31", "11:36", "15:16", "18:45", "20:15"));
-        source.put("2026-05-31", Arrays.asList("02:56", "04:31", "11:36", "15:17", "18:45", "20:16"));
-
-        Map<String, Map<PrayerKey, String>> result = new LinkedHashMap<>();
-        int offset = TEL_SHEVA_OFFSET_MINUTES + DAYLIGHT_SAVING_OFFSET_MINUTES;
-        for (Map.Entry<String, List<String>> entry : source.entrySet()) {
-            List<String> times = entry.getValue();
-            Map<PrayerKey, String> day = new LinkedHashMap<>();
-            day.put(PrayerKey.FAJR, addMinutes(times.get(0), offset));
-            day.put(PrayerKey.SUNRISE, addMinutes(times.get(1), offset));
-            day.put(PrayerKey.DHUHR, addMinutes(times.get(2), offset));
-            day.put(PrayerKey.ASR, addMinutes(times.get(3), offset));
-            day.put(PrayerKey.MAGHRIB, addMinutes(times.get(4), offset));
-            day.put(PrayerKey.ISHA, addMinutes(times.get(5), offset));
-            result.put(entry.getKey(), day);
-        }
-        return result;
-    }
-
-    private static String addMinutes(String time, int minutes) {
-        String[] parts = time.split(":");
-        int total = Integer.parseInt(parts[0]) * 60 + Integer.parseInt(parts[1]) + minutes;
-        total = (total + 1440) % 1440;
-        return String.format(Locale.US, "%02d:%02d", total / 60, total % 60);
-    }
 }

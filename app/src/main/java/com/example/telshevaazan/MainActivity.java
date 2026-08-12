@@ -42,10 +42,12 @@ import android.hardware.SensorManager;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.List;
 
 public class MainActivity extends Activity implements SensorEventListener {
-    private static final String APP_VERSION = "0.6.58";
-    private static final String APP_BUILD = "149";
+    private static final String APP_VERSION = "0.6.59";
+    private static final String APP_BUILD = "150";
+    private static final float APP_FONT_SCALE = 0.82f;
     private static final String WELCOME_KEY = "welcomeActivationPromptCompleted";
     private static final String RADIO_URL = "https://quran-radio.org:8899/;?type=http&nocache=29";
 
@@ -66,14 +68,21 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private SharedPreferences prefs;
     private ThemePalette theme;
+    private Typeface appRegularTypeface;
+    private Typeface appMediumTypeface;
+    private Typeface appStrongTypeface;
     private Date now = new Date();
     private String selectedDateKey;
     private boolean followsToday = true;
     private Tab selectedTab = Tab.SCHEDULE;
     private NotificationPane selectedNotificationPane = NotificationPane.ADHAN;
+    private AdhkarLibrary.Category selectedAdhkarCategory;
+    private int selectedAdhkarIndex;
+    private AdhkarProgressStore adhkarProgress;
 
     private TextView currentTimeLabel;
     private TextView dateLabel;
+    private TextView nextPrayerCaptionLabel;
     private TextView nextPrayerNameLabel;
     private TextView nextPrayerTimeLabel;
     private TextView countdownLabel;
@@ -107,7 +116,9 @@ public class MainActivity extends Activity implements SensorEventListener {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         prefs = SalatiSettings.prefs(this);
-        selectedDateKey = PrayerEngine.defaultDateKey();
+        adhkarProgress = new AdhkarProgressStore(this);
+        loadAppTypeface();
+        selectedDateKey = PrayerEngine.automaticScheduleDateKey(now);
         sensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
         if (sensorManager != null) {
             accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
@@ -119,6 +130,16 @@ public class MainActivity extends Activity implements SensorEventListener {
         PrayerNotificationScheduler.ensureChannels(this);
         PrayerNotificationScheduler.scheduleAll(this);
         SalatiWidgetUpdater.updateAll(this);
+        PalestinePrayerCalendar.refreshRemoteIfNeeded(this, didUpdate -> {
+            if (didUpdate) {
+                PrayerNotificationScheduler.scheduleAll(this);
+                SalatiWidgetUpdater.updateAll(this);
+                if (followsToday) {
+                    selectedDateKey = PrayerEngine.automaticScheduleDateKey(now);
+                    updateScheduleView();
+                }
+            }
+        });
         rebuildContent();
         maybeShowWelcome();
         handler.post(ticker);
@@ -130,7 +151,22 @@ public class MainActivity extends Activity implements SensorEventListener {
         if (selectedTab == Tab.QIBLA) {
             startCompass();
         }
+        // Permission and system settings can change while the app is in the
+        // background. Rebuilding the rolling alarm window here keeps the adhan
+        // active without requiring the user to toggle another setting first.
+        PrayerNotificationScheduler.ensureChannels(this);
+        PrayerNotificationScheduler.scheduleAll(this);
         SalatiWidgetUpdater.updateAll(this);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 922) {
+            PrayerNotificationScheduler.ensureChannels(this);
+            PrayerNotificationScheduler.scheduleAll(this);
+            rebuildContent();
+        }
     }
 
     @Override
@@ -226,7 +262,7 @@ public class MainActivity extends Activity implements SensorEventListener {
                 break;
         }
         root.addView(content, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
-        root.addView(dock(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(66)));
+        root.addView(dock(), new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(62)));
 
         setContentView(shell);
         if (selectedTab == Tab.QIBLA) {
@@ -237,22 +273,23 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View scheduleContent() {
         LinearLayout root = vertical();
         root.setGravity(Gravity.RIGHT);
-        root.setPadding(dp(2), 0, dp(2), dp(4));
+        root.setPadding(0, 0, 0, dp(2));
 
-        root.addView(timeHeaderCard(), fullWidthWithMargins(dp(36), dp(4), dp(36), dp(8)));
-        root.addView(nextPrayerCard(), fullWidthWithMargins(0, 0, 0, dp(8)));
+        root.addView(timeHeaderCard(), fullWidthWithMargins(dp(36), 0, dp(36), dp(3)));
+        root.addView(nextPrayerCard(), fullWidthWithMargins(0, 0, 0, dp(4)));
+
+        liveStatusLabel = label("", 13, theme.secondaryText, Typeface.BOLD);
+        liveStatusLabel.setGravity(Gravity.CENTER);
+        liveStatusLabel.setTextDirection(View.TEXT_DIRECTION_RTL);
+        liveStatusLabel.setPadding(dp(10), dp(9), dp(10), dp(9));
+        liveStatusLabel.setBackground(round(theme.control, 13, theme.border));
+        root.addView(liveStatusLabel, fullWidthWithMargins(dp(10), 0, dp(10), dp(6)));
 
         rowsContainer = vertical();
-        rowsContainer.setPadding(dp(5), dp(5), dp(5), dp(0));
-        rowsContainer.setBackground(round(scheduleOuterPanel(), 22, scheduleOuterBorder()));
+        rowsContainer.setPadding(dp(8), dp(8), dp(8), dp(8));
+        rowsContainer.setBackground(round(scheduleOuterPanel(), 24, scheduleOuterBorder(), 1));
         elevate(rowsContainer, 2);
         root.addView(rowsContainer, fullWidth());
-
-        liveStatusLabel = label("", 12, theme.secondaryText, Typeface.BOLD);
-        liveStatusLabel.setGravity(Gravity.CENTER);
-        liveStatusLabel.setPadding(dp(8), dp(12), dp(8), dp(12));
-        liveStatusLabel.setVisibility(View.GONE);
-        root.addView(liveStatusLabel, fullWidth());
 
         updateScheduleView();
         return root;
@@ -263,7 +300,11 @@ public class MainActivity extends Activity implements SensorEventListener {
     }
 
     private int scheduleOuterBorder() {
-        return theme.night ? Color.argb(116, 78, 148, 210) : theme.activeBorder;
+        return theme.night ? Color.argb(190, 78, 148, 210) : Color.argb(200, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent));
+    }
+
+    private int scheduleTopAccentBorder() {
+        return theme.night ? Color.argb(142, 78, 148, 210) : Color.argb(154, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent));
     }
 
     private int scheduleSoftBorder() {
@@ -289,20 +330,22 @@ public class MainActivity extends Activity implements SensorEventListener {
     private View timeHeaderCard() {
         LinearLayout card = vertical();
         card.setGravity(Gravity.CENTER);
-        card.setPadding(dp(8), dp(7), dp(8), dp(7));
-        card.setBackground(round(theme.night ? Color.argb(168, 16, 22, 30) : Color.argb(178, 255, 255, 255), 22, scheduleSoftBorder()));
+        card.setPadding(dp(8), dp(3), dp(8), dp(3));
+        card.setBackground(round(theme.night ? Color.argb(168, 16, 22, 30) : Color.argb(178, 255, 255, 255), 22, scheduleTopAccentBorder()));
         elevate(card, 4);
 
-        currentTimeLabel = label("--:--:--", 19, theme.accent, Typeface.BOLD);
+        currentTimeLabel = label("--:--:--", 27, theme.accent, Typeface.BOLD);
+        currentTimeLabel.setTypeface(strongTypeface());
         currentTimeLabel.setGravity(Gravity.CENTER);
         currentTimeLabel.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         currentTimeLabel.setIncludeFontPadding(false);
         card.addView(currentTimeLabel, fullWidth());
 
-        dateLabel = label("--", 10, theme.accent, Typeface.BOLD);
+        dateLabel = label("--", 15, theme.accent, Typeface.BOLD);
         dateLabel.setGravity(Gravity.CENTER);
         dateLabel.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
-        card.addView(dateLabel, fullWidthWithMargins(0, dp(2), 0, dp(5)));
+        dateLabel.setIncludeFontPadding(false);
+        card.addView(dateLabel, fullWidthWithMargins(0, 0, 0, dp(4)));
 
         LinearLayout indicator = new LinearLayout(this);
         indicator.setOrientation(LinearLayout.HORIZONTAL);
@@ -325,52 +368,60 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private View nextPrayerCard() {
         FrameLayout card = new FrameLayout(this);
-        card.setBackground(round(Color.TRANSPARENT, 24, theme.night ? Color.argb(82, 210, 224, 238) : AppTheme.withAlpha(Color.WHITE, 0.72)));
+        card.setBackground(round(Color.TRANSPARENT, 24, scheduleTopAccentBorder()));
         card.setClipToOutline(true);
         elevate(card, 3);
 
         ImageView image = new ImageView(this);
         image.setImageResource(theme.night ? R.drawable.nabawi_night : R.drawable.nabawi_day);
+        int heroHeight = dp(190);
         image.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
+        card.addView(image, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, heroHeight));
 
         View overlay = new View(this);
-        overlay.setBackgroundColor(theme.night ? Color.argb(24, 0, 0, 0) : Color.argb(44, 255, 255, 255));
-        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
+        overlay.setBackgroundColor(theme.night ? Color.argb(18, 255, 255, 255) : Color.argb(44, 255, 255, 255));
+        card.addView(overlay, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, heroHeight));
 
         View floorGlow = new View(this);
         floorGlow.setBackground(heroFloorFade());
-        FrameLayout.LayoutParams floorGlowParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(118), Gravity.BOTTOM);
+        FrameLayout.LayoutParams floorGlowParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(92), Gravity.BOTTOM);
         card.addView(floorGlow, floorGlowParams);
 
         View textGlow = new View(this);
         textGlow.setBackground(heroTextFade());
-        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(322), dp(238), Gravity.RIGHT | Gravity.TOP);
+        FrameLayout.LayoutParams textGlowParams = new FrameLayout.LayoutParams(dp(322), heroHeight, Gravity.RIGHT | Gravity.TOP);
         card.addView(textGlow, textGlowParams);
 
-        LinearLayout content = vertical();
-        content.setGravity(Gravity.RIGHT);
-        content.setPadding(dp(18), dp(18), dp(18), dp(12));
-        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(238)));
+        FrameLayout content = new FrameLayout(this);
+        card.addView(content, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, heroHeight));
 
-        TextView caption = label("الصلاة القادمة", 13, theme.accent, Typeface.BOLD);
-        content.addView(caption, fullWidth());
+        nextPrayerCaptionLabel = label("الصلاة القادمة", 16, theme.accent, Typeface.BOLD);
+        nextPrayerCaptionLabel.setIncludeFontPadding(false);
+        FrameLayout.LayoutParams captionParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(24), Gravity.RIGHT | Gravity.TOP);
+        captionParams.setMargins(dp(18), dp(15), dp(18), 0);
+        content.addView(nextPrayerCaptionLabel, captionParams);
 
-        nextPrayerNameLabel = label("--", 30, theme.night ? Color.WHITE : theme.primaryText, Typeface.BOLD);
+        nextPrayerNameLabel = label("--", 36, theme.night ? Color.WHITE : theme.primaryText, Typeface.BOLD);
+        nextPrayerNameLabel.setTypeface(strongTypeface());
         nextPrayerNameLabel.setIncludeFontPadding(false);
-        content.addView(nextPrayerNameLabel, fullWidth());
+        FrameLayout.LayoutParams nameParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(48), Gravity.RIGHT | Gravity.TOP);
+        nameParams.setMargins(dp(18), dp(32), dp(18), 0);
+        content.addView(nextPrayerNameLabel, nameParams);
 
-        nextPrayerTimeLabel = label("--:--", 44, theme.accent, Typeface.BOLD);
+        nextPrayerTimeLabel = label("--:--", 50, theme.accent, Typeface.BOLD);
+        nextPrayerTimeLabel.setTypeface(strongTypeface());
         nextPrayerTimeLabel.setIncludeFontPadding(false);
-        content.addView(nextPrayerTimeLabel, fullWidth());
+        FrameLayout.LayoutParams timeParams = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(74), Gravity.RIGHT | Gravity.TOP);
+        timeParams.setMargins(dp(18), dp(58), dp(18), 0);
+        content.addView(nextPrayerTimeLabel, timeParams);
 
         countdownLabel = label("", 1, Color.TRANSPARENT, Typeface.NORMAL);
         countdownLabel.setVisibility(View.GONE);
-        content.addView(countdownLabel, new LinearLayout.LayoutParams(1, 1));
+        content.addView(countdownLabel, new FrameLayout.LayoutParams(1, 1));
 
         elapsedLabel = label("", 1, Color.TRANSPARENT, Typeface.NORMAL);
         elapsedLabel.setVisibility(View.GONE);
-        content.addView(elapsedLabel, new LinearLayout.LayoutParams(1, 1));
+        content.addView(elapsedLabel, new FrameLayout.LayoutParams(1, 1));
 
         return card;
     }
@@ -381,8 +432,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     GradientDrawable.Orientation.LEFT_RIGHT,
                     new int[]{
                             Color.argb(0, 0, 0, 0),
-                            Color.argb(102, 0, 0, 0),
-                            Color.argb(186, 0, 0, 0)
+                            Color.argb(54, 0, 0, 0),
+                            Color.argb(126, 0, 0, 0)
                     }
             );
         }
@@ -402,8 +453,8 @@ public class MainActivity extends Activity implements SensorEventListener {
                     GradientDrawable.Orientation.TOP_BOTTOM,
                     new int[]{
                             Color.argb(0, 0, 0, 0),
-                            Color.argb(46, 0, 0, 0),
-                            Color.argb(142, 0, 0, 0)
+                            Color.argb(22, 0, 0, 0),
+                            Color.argb(82, 0, 0, 0)
                     }
             );
         }
@@ -425,7 +476,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
         row.addView(smallButton("اليوم التالي", v -> moveDay(1)));
         row.addView(smallButton("اليوم", v -> {
-            selectedDateKey = PrayerEngine.defaultDateKey(now);
+            selectedDateKey = PrayerEngine.automaticScheduleDateKey(now);
             followsToday = true;
             updateScheduleView();
         }));
@@ -438,63 +489,85 @@ public class MainActivity extends Activity implements SensorEventListener {
             return;
         }
         if (followsToday) {
-            selectedDateKey = PrayerEngine.defaultDateKey(now);
+            selectedDateKey = PrayerEngine.automaticScheduleDateKey(now);
         }
 
         DaySchedule schedule = PrayerEngine.schedule(selectedDateKey);
         PrayerTime next = PrayerEngine.nextPrayer(selectedDateKey, now);
         PrayerTime previous = PrayerEngine.previousPrayer(selectedDateKey, now);
+        PrayerTime activeIqama = PrayerEngine.activeIqama(now);
         currentTimeLabel.setText(PrayerEngine.timeText(now, true));
         dateLabel.setText(PrayerEngine.longDateLabel(selectedDateKey));
-        nextPrayerNameLabel.setText(next == null ? "--" : next.title);
-        nextPrayerTimeLabel.setText(next == null ? "--:--" : next.time);
-        countdownLabel.setText(next == null ? "--:--:--" : PrayerEngine.durationText(next.date.getTime() - now.getTime()));
+        PrayerTime featured = activeIqama != null ? activeIqama : next;
+        nextPrayerCaptionLabel.setText(activeIqama != null ? "الإقامة القادمة" : "الصلاة القادمة");
+        nextPrayerNameLabel.setText(featured == null ? "--" : featured.title);
+        nextPrayerTimeLabel.setText(featured == null ? "--:--" : (activeIqama != null ? PrayerEngine.iqamaTime(featured) : featured.time));
+        long featuredTarget = activeIqama != null ? PrayerEngine.iqamaDate(activeIqama).getTime() : (featured == null ? now.getTime() : featured.date.getTime());
+        countdownLabel.setText(featured == null ? "--:--:--" : PrayerEngine.durationText(featuredTarget - now.getTime()));
         elapsedLabel.setText(previous == null ? "تتحدث تلقائيًا" : "مضى على " + previous.title + " " + PrayerEngine.durationText(now.getTime() - previous.date.getTime()));
-        liveStatusLabel.setText("");
-        liveStatusLabel.setVisibility(View.GONE);
+        if (activeIqama != null) {
+            liveStatusLabel.setText("متبقي على إقامة صلاة " + activeIqama.title + "  •  " + PrayerEngine.durationText(PrayerEngine.iqamaDate(activeIqama).getTime() - now.getTime()));
+            liveStatusLabel.setTextColor(theme.accent);
+            liveStatusLabel.setBackground(round(theme.activeRow, 13, theme.activeBorder));
+        } else if (next != null) {
+            liveStatusLabel.setText("متبقي على " + next.title + "  •  " + PrayerEngine.durationText(next.date.getTime() - now.getTime()));
+            liveStatusLabel.setTextColor(theme.secondaryText);
+            liveStatusLabel.setBackground(round(theme.control, 13, theme.border));
+        } else {
+            liveStatusLabel.setText("تتحدث المواقيت تلقائيًا");
+        }
 
         rowsContainer.removeAllViews();
-        for (PrayerTime item : schedule.displayTimes()) {
-            rowsContainer.addView(prayerRow(item, next, previous), fullWidthWithMargins(0, 0, 0, dp(4)));
+        List<PrayerTime> displayTimes = schedule.displayTimes();
+        for (int i = 0; i < displayTimes.size(); i++) {
+            PrayerTime item = displayTimes.get(i);
+            int bottomMargin = i == displayTimes.size() - 1 ? 0 : dp(4);
+            rowsContainer.addView(prayerRow(item, next, previous, activeIqama), fullWidthWithMargins(0, 0, 0, bottomMargin));
         }
     }
 
-    private View prayerRow(PrayerTime item, PrayerTime next, PrayerTime previous) {
-        boolean active = next != null && item.key == next.key;
+    private View prayerRow(PrayerTime item, PrayerTime next, PrayerTime previous, PrayerTime activeIqama) {
+        boolean active = activeIqama != null ? item.key == activeIqama.key : next != null && item.key == next.key;
         boolean justPassed = previous != null && item.key == previous.key && !active;
         LinearLayout row = new LinearLayout(this);
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        row.setPadding(dp(10), dp(3), dp(8), dp(3));
-        row.setBackground(round(active ? scheduleActiveRow() : scheduleRow(), 10, active ? scheduleActiveBorder() : scheduleRowBorder()));
+        row.setPadding(dp(10), dp(4), dp(8), dp(4));
+        row.setBackground(round(active ? scheduleActiveRow() : scheduleRow(), 11, active ? scheduleActiveBorder() : scheduleRowBorder()));
         elevate(row, active ? 3 : 1);
-        row.setOnClickListener(v -> showPrayerDetails(item));
+        row.setClickable(false);
+        int rowContentHeight = dp(54);
 
         LinearLayout timeColumn = vertical();
         timeColumn.setGravity(Gravity.CENTER_VERTICAL);
-        TextView time = label(item.time, 20, active ? theme.accent : theme.primaryText, Typeface.BOLD);
+        TextView time = label(item.time, 18, active ? theme.accent : theme.primaryText, Typeface.BOLD);
+        time.setTypeface(strongTypeface());
         time.setIncludeFontPadding(false);
         time.setGravity(Gravity.LEFT);
         time.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         timeColumn.addView(time, fullWidth());
-        TextView iqama = label(prayerDetailText(item), 10, active ? theme.secondaryText : AppTheme.withAlpha(theme.secondaryText, 0.86), Typeface.BOLD);
+        TextView iqama = label(prayerDetailText(item), 14, active ? theme.secondaryText : AppTheme.withAlpha(theme.secondaryText, 0.90), Typeface.BOLD);
+        iqama.setIncludeFontPadding(true);
         singleLine(iqama);
         iqama.setGravity(Gravity.LEFT);
         iqama.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         timeColumn.addView(iqama, fullWidth());
-        row.addView(timeColumn, new LinearLayout.LayoutParams(dp(96), dp(44)));
+        row.addView(timeColumn, new LinearLayout.LayoutParams(dp(102), rowContentHeight));
 
         LinearLayout text = vertical();
         text.setGravity(Gravity.RIGHT);
         text.setPadding(dp(7), 0, dp(7), 0);
-        TextView name = label(item.title, 18, active ? theme.accent : theme.secondaryText, Typeface.BOLD);
+        TextView name = label(item.title, 16, active ? theme.accent : theme.secondaryText, Typeface.BOLD);
         name.setIncludeFontPadding(false);
         singleLine(name);
         text.addView(name, fullWidth());
-        TextView detail = label("", 10, theme.secondaryText, Typeface.BOLD);
+        TextView detail = label("", 14, theme.secondaryText, Typeface.BOLD);
+        detail.setIncludeFontPadding(true);
         singleLine(detail);
-        if (active && next != null) {
+        if (activeIqama != null && item.key == activeIqama.key) {
+            detail.setText("متبقي للإقامة " + PrayerEngine.durationText(PrayerEngine.iqamaDate(activeIqama).getTime() - now.getTime()));
+        } else if (active && next != null) {
             detail.setText("متبقي " + next.key.targetLabel + " " + PrayerEngine.durationText(next.date.getTime() - now.getTime()));
         } else if (justPassed && previous != null) {
             detail.setText("مضى على " + previous.title + " " + PrayerEngine.durationText(now.getTime() - previous.date.getTime()));
@@ -502,13 +575,13 @@ public class MainActivity extends Activity implements SensorEventListener {
             detail.setText("");
         }
         text.addView(detail, fullWidth());
-        row.addView(text, new LinearLayout.LayoutParams(0, dp(44), 1));
+        row.addView(text, new LinearLayout.LayoutParams(0, rowContentHeight, 1));
 
-        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.54), 21);
-        row.addView(icon, new LinearLayout.LayoutParams(dp(30), dp(44)));
+        ImageView icon = iconImage(prayerIcon(item.key), active ? theme.accent : AppTheme.withAlpha(theme.secondaryText, 0.54), 20);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(30), rowContentHeight));
 
         ImageView chevron = iconImage(R.drawable.ic_chevron_left, AppTheme.withAlpha(theme.secondaryText, 0.34), 17);
-        row.addView(chevron, new LinearLayout.LayoutParams(dp(18), dp(44)));
+        row.addView(chevron, new LinearLayout.LayoutParams(dp(18), rowContentHeight));
 
         if (active) {
             View bar = new View(this);
@@ -564,37 +637,23 @@ public class MainActivity extends Activity implements SensorEventListener {
         root.addView(notificationSegmentedControl(), fullWidthWithMargins(dp(18), 0, dp(18), dp(12)));
         if (selectedNotificationPane == NotificationPane.THEMES) {
             root.addView(notificationThemesPanel(), fullWidthWithMargins(0, 0, 0, dp(18)));
+        } else if (selectedNotificationPane == NotificationPane.ADHKAR) {
+            root.addView(adhkarMasterToggle(), fullWidthWithMargins(0, 0, 0, dp(8)));
+            root.addView(adhkarPanel("اختبار تذكير الأذكار", "إشعار صامت مع اهتزاز خفيف حسب وضع الهاتف", previewNafahatPanel()), fullWidthWithMargins(0, 0, 0, dp(8)));
+            root.addView(adhkarPanel("وقت الأذكار", "اختر كل كم وقت يصلك ذكر خفيف", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, dp(8)));
+            root.addView(adhkarPanel("نوع التذكير", "اختر مجموعة النصوص التي تناسبك", nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, dp(8)));
+            root.addView(adhkarPanel("وقت الهدوء", "لن تصل تذكيرات الأذكار أثناء فترة الهدوء", quietOptions()), fullWidthWithMargins(0, 0, 0, dp(18)));
         } else {
             root.addView(notificationMasterToggle(), fullWidthWithMargins(0, 0, 0, dp(8)));
             root.addView(notificationPanel("صوت الأذان", R.drawable.ic_notification_volume, soundOptions(), null), fullWidthWithMargins(0, 0, 0, dp(8)));
-            root.addView(notificationPanel("الصلوات التي يصدر لها الأذان", R.drawable.ic_notification_bell_ring, prayerToggles(), enabledPrayerSummary()), fullWidthWithMargins(0, 0, 0, dp(18)));
+            root.addView(notificationPanel("الصلوات التي يصدر لها الأذان", R.drawable.ic_notification_bell_ring, prayerToggles(), enabledPrayerSummary()), fullWidthWithMargins(0, 0, 0, dp(8)));
+            root.addView(notificationPanel("تنبيهات الإقامة", R.drawable.ic_tab_clock, iqamaNotificationOptions(), "بعد الأذان مباشرة"), fullWidthWithMargins(0, 0, 0, dp(18)));
         }
         return scroll;
     }
 
     private View notificationHeader() {
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(6), 0, dp(6), 0);
-
-        FrameLayout iconBox = new FrameLayout(this);
-        iconBox.setBackground(round(theme.control, 12, theme.border));
-        ImageView icon = iconImage(R.drawable.ic_tab_bell, theme.accent, 23);
-        iconBox.addView(icon, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-        row.addView(iconBox, new LinearLayout.LayoutParams(dp(42), dp(42)));
-
-        LinearLayout text = vertical();
-        text.setGravity(Gravity.RIGHT);
-        TextView title = label("التنبيه", 27, theme.primaryText, Typeface.BOLD);
-        title.setIncludeFontPadding(false);
-        text.addView(title, fullWidth());
-        TextView subtitle = label("الأذان والأنماط", 12, theme.accent, Typeface.BOLD);
-        subtitle.setIncludeFontPadding(false);
-        text.addView(subtitle, fullWidthWithMargins(0, dp(8), 0, 0));
-        row.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
-        return row;
+        return mediaPageHeader("التنبيه", "الأذان والإقامة والأذكار والأنماط", R.drawable.ic_tab_bell);
     }
 
     private View notificationSegmentedControl() {
@@ -602,19 +661,91 @@ public class MainActivity extends Activity implements SensorEventListener {
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         row.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams leftSegment = new LinearLayout.LayoutParams(0, dp(44), 1);
-        leftSegment.setMargins(dp(4), 0, dp(4), 0);
-        LinearLayout.LayoutParams rightSegment = new LinearLayout.LayoutParams(0, dp(44), 1);
-        rightSegment.setMargins(dp(4), 0, dp(4), 0);
+        LinearLayout.LayoutParams leftSegment = notificationSegmentParams();
+        LinearLayout.LayoutParams middleSegment = notificationSegmentParams();
+        LinearLayout.LayoutParams rightSegment = notificationSegmentParams();
         row.addView(notificationSegment("الأنماط", R.drawable.ic_notification_palette, selectedNotificationPane == NotificationPane.THEMES, () -> {
             selectedNotificationPane = NotificationPane.THEMES;
             rebuildContent();
         }), leftSegment);
+        row.addView(notificationSegment("الأذكار", R.drawable.ic_tab_sparkle, selectedNotificationPane == NotificationPane.ADHKAR, () -> {
+            selectedNotificationPane = NotificationPane.ADHKAR;
+            rebuildContent();
+        }), middleSegment);
         row.addView(notificationSegment("الأذان", R.drawable.ic_tab_bell, selectedNotificationPane == NotificationPane.ADHAN, () -> {
             selectedNotificationPane = NotificationPane.ADHAN;
             rebuildContent();
         }), rightSegment);
         return row;
+    }
+
+    private LinearLayout.LayoutParams notificationSegmentParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(44), 1);
+        params.setMargins(dp(3), 0, dp(3), 0);
+        return params;
+    }
+
+    private View iqamaNotificationOptions() {
+        LinearLayout content = vertical();
+        boolean enabled = SalatiSettings.iqamaEnabled(this);
+        LinearLayout toggle = new LinearLayout(this);
+        toggle.setOrientation(LinearLayout.HORIZONTAL);
+        toggle.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
+        toggle.setGravity(Gravity.CENTER_VERTICAL);
+        toggle.setPadding(dp(10), dp(8), dp(10), dp(8));
+        toggle.setBackground(round(enabled ? theme.activeRow : theme.row, 12, enabled ? theme.activeBorder : theme.border));
+        toggle.setOnClickListener(v -> {
+            boolean next = !SalatiSettings.iqamaEnabled(this);
+            prefs.edit().putBoolean(SalatiSettings.KEY_IQAMA_ENABLED, next).apply();
+            if (next) requestNotificationPermissionIfNeeded();
+            PrayerNotificationScheduler.scheduleAll(this);
+            rebuildContent();
+        });
+        toggle.addView(androidSwitchPill(enabled), new LinearLayout.LayoutParams(dp(52), dp(30)));
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.RIGHT);
+        TextView title = label("تنبيه عند إقامة الصلاة", 15, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        copy.addView(title, fullWidth());
+        TextView subtitle = label("يظهر عند انتهاء عداد الإقامة لكل صلاة مفعلة", 11, theme.secondaryText, Typeface.BOLD);
+        subtitle.setGravity(Gravity.RIGHT);
+        copy.addView(subtitle, fullWidthWithMargins(0, dp(4), 0, 0));
+        toggle.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        content.addView(toggle, fullWidthWithMargins(0, 0, 0, dp(10)));
+
+        LinearLayout preview = new LinearLayout(this);
+        preview.setOrientation(LinearLayout.HORIZONTAL);
+        preview.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        preview.setGravity(Gravity.CENTER_VERTICAL);
+        preview.setPadding(dp(12), dp(10), dp(12), dp(10));
+        preview.setBackground(round(theme.control, 12, theme.border));
+        preview.setOnClickListener(v -> sendPreviewIqama());
+        ImageView icon = iconImage(R.drawable.ic_tab_clock, theme.accent, 22);
+        preview.addView(icon, new LinearLayout.LayoutParams(dp(38), dp(42)));
+        LinearLayout previewCopy = vertical();
+        previewCopy.setGravity(Gravity.RIGHT);
+        TextView previewTitle = label("معاينة عداد الإقامة", 14, theme.primaryText, Typeface.BOLD);
+        previewTitle.setGravity(Gravity.RIGHT);
+        previewCopy.addView(previewTitle, fullWidth());
+        TextView delays = label("الفجر 24 · الظهر 14 · العصر 16 · المغرب 7 · العشاء 14 دقيقة", 10, theme.secondaryText, Typeface.BOLD);
+        delays.setGravity(Gravity.RIGHT);
+        previewCopy.addView(delays, fullWidthWithMargins(0, dp(4), 0, 0));
+        preview.addView(previewCopy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        content.addView(preview, fullWidth());
+        return content;
+    }
+
+    private void sendPreviewIqama() {
+        requestNotificationPermissionIfNeeded();
+        Toast.makeText(this, "ستظهر معاينة الإقامة بعد ثانيتين", Toast.LENGTH_SHORT).show();
+        handler.postDelayed(() -> {
+            android.content.Intent intent = new android.content.Intent(this, PrayerNotificationReceiver.class);
+            intent.setAction(PrayerNotificationScheduler.ACTION_NOTIFY);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_KIND, PrayerNotificationScheduler.KIND_IQAMA);
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_TITLE, "الآن تُقام صلاة الظهر");
+            intent.putExtra(PrayerNotificationScheduler.EXTRA_BODY, "حيّ على الصلاة");
+            sendBroadcast(intent);
+        }, 2000);
     }
 
     private View notificationSegment(String title, int iconResource, boolean selected, Runnable action) {
@@ -970,16 +1101,203 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private View adhkarContent() {
         ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
         LinearLayout root = pageRoot();
         scroll.addView(root);
-        root.addView(adhkarHeader(), fullWidthWithMargins(0, dp(12), 0, dp(16)));
-        root.addView(adhkarMasterToggle(), fullWidthWithMargins(0, 0, 0, dp(18)));
-        root.addView(adhkarPanel("صوت الأذكار", null, nafahatSoundOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
-        root.addView(adhkarPanel("اختبار التذكير", null, previewNafahatPanel()), fullWidthWithMargins(0, 0, 0, dp(14)));
-        root.addView(adhkarPanel("وقت الأذكار", "اختر كل كم وقت يصلك ذكر خفيف", nafahatIntervalOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
-        root.addView(adhkarPanel("نوع الذكر", null, nafahatTextOptions()), fullWidthWithMargins(0, 0, 0, dp(14)));
-        root.addView(adhkarPanel("وقت الهدوء", null, quietOptions()), fullWidthWithMargins(0, 0, 0, dp(16)));
+        root.addView(mediaPageHeader("الأذكار", "ورد يومي بسيط ومحفوظ على جهازك", R.drawable.ic_tab_sparkle), fullWidthWithMargins(0, dp(4), 0, dp(12)));
+        if (selectedAdhkarCategory == null) {
+            root.addView(adhkarOverview(), fullWidthWithMargins(0, 0, 0, dp(18)));
+        } else {
+            root.addView(adhkarReader(), fullWidthWithMargins(0, 0, 0, dp(18)));
+        }
         return scroll;
+    }
+
+    private View adhkarOverview() {
+        LinearLayout content = vertical();
+        content.setGravity(Gravity.RIGHT);
+        AdhkarLibrary.Category suggested = AdhkarLibrary.suggestedNow();
+        int complete = adhkarProgress.totalCompleted();
+        int total = adhkarProgress.totalItems();
+
+        LinearLayout suggestion = new LinearLayout(this);
+        suggestion.setOrientation(LinearLayout.HORIZONTAL);
+        suggestion.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        suggestion.setGravity(Gravity.CENTER_VERTICAL);
+        suggestion.setPadding(dp(16), dp(14), dp(16), dp(14));
+        suggestion.setBackground(round(theme.panel, 18, theme.activeBorder));
+        suggestion.setOnClickListener(v -> openAdhkarCategory(suggested));
+        ImageView icon = iconImage(suggested.icon, theme.accent, 26);
+        suggestion.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(58)));
+        LinearLayout copy = vertical();
+        copy.setGravity(Gravity.RIGHT);
+        TextView title = label("تابع " + suggested.title, 21, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        copy.addView(title, fullWidth());
+        TextView subtitle = label("نقترح عليك الورد المناسب لهذا الوقت", 13, theme.secondaryText, Typeface.BOLD);
+        subtitle.setGravity(Gravity.RIGHT);
+        copy.addView(subtitle, fullWidthWithMargins(0, dp(4), 0, 0));
+        suggestion.addView(copy, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        TextView progress = label(complete + "/" + total, 15, theme.accent, Typeface.BOLD);
+        progress.setGravity(Gravity.CENTER);
+        progress.setBackground(round(theme.activeRow, 28, theme.activeBorder));
+        suggestion.addView(progress, new LinearLayout.LayoutParams(dp(66), dp(66)));
+        content.addView(suggestion, fullWidthWithMargins(0, 0, 0, dp(14)));
+
+        TextView choose = label("اختر وردك", 19, theme.secondaryText, Typeface.BOLD);
+        choose.setGravity(Gravity.RIGHT);
+        content.addView(choose, fullWidthWithMargins(0, 0, 0, dp(10)));
+
+        AdhkarLibrary.Category[] categories = AdhkarLibrary.Category.values();
+        for (int i = 0; i < categories.length; i += 2) {
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+            row.setGravity(Gravity.CENTER);
+            row.addView(adhkarCategoryCard(categories[i]), categoryCardParams(i + 1 < categories.length ? dp(5) : 0));
+            if (i + 1 < categories.length) {
+                row.addView(adhkarCategoryCard(categories[i + 1]), categoryCardParams(0));
+            } else {
+                row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1));
+            }
+            content.addView(row, fullWidthWithMargins(0, 0, 0, dp(10)));
+        }
+        return content;
+    }
+
+    private LinearLayout.LayoutParams categoryCardParams(int leftMargin) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(104), 1);
+        params.setMargins(leftMargin, 0, 0, 0);
+        return params;
+    }
+
+    private View adhkarCategoryCard(AdhkarLibrary.Category category) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(13), dp(12), dp(13), dp(12));
+        card.setBackground(round(theme.panel, 16, theme.border));
+        card.setOnClickListener(v -> openAdhkarCategory(category));
+        ImageView icon = iconImage(category.icon, theme.accent, 24);
+        icon.setBackground(round(AppTheme.withAlpha(theme.accent, 0.14), 30, Color.TRANSPARENT));
+        icon.setPadding(dp(10), dp(10), dp(10), dp(10));
+        card.addView(icon, new LinearLayout.LayoutParams(dp(52), dp(52)));
+        LinearLayout text = vertical();
+        text.setGravity(Gravity.RIGHT);
+        int completed = adhkarProgress.completed(category);
+        int total = AdhkarLibrary.items(category).size();
+        TextView title = label(category.title, 18, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        text.addView(title, fullWidth());
+        TextView detail = label(completed + " من " + total, 13, theme.secondaryText, Typeface.BOLD);
+        detail.setGravity(Gravity.RIGHT);
+        text.addView(detail, fullWidthWithMargins(0, dp(4), 0, 0));
+        card.addView(text, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        return card;
+    }
+
+    private void openAdhkarCategory(AdhkarLibrary.Category category) {
+        selectedAdhkarCategory = category;
+        List<AdhkarLibrary.Item> items = AdhkarLibrary.items(category);
+        selectedAdhkarIndex = 0;
+        for (int i = 0; i < items.size(); i++) {
+            if (adhkarProgress.count(items.get(i)) < items.get(i).target) {
+                selectedAdhkarIndex = i;
+                break;
+            }
+        }
+        rebuildContent();
+    }
+
+    private View adhkarReader() {
+        LinearLayout content = vertical();
+        content.setGravity(Gravity.RIGHT);
+        List<AdhkarLibrary.Item> items = AdhkarLibrary.items(selectedAdhkarCategory);
+        if (items.isEmpty()) return content;
+        selectedAdhkarIndex = Math.max(0, Math.min(selectedAdhkarIndex, items.size() - 1));
+        AdhkarLibrary.Item item = items.get(selectedAdhkarIndex);
+        int count = adhkarProgress.count(item);
+
+        LinearLayout navigation = new LinearLayout(this);
+        navigation.setOrientation(LinearLayout.HORIZONTAL);
+        navigation.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        navigation.setGravity(Gravity.CENTER_VERTICAL);
+        navigation.setPadding(dp(8), 0, dp(8), 0);
+        TextView category = label(selectedAdhkarCategory.title, 22, theme.primaryText, Typeface.BOLD);
+        category.setGravity(Gravity.RIGHT);
+        navigation.addView(category, new LinearLayout.LayoutParams(0, dp(48), 1));
+        TextView back = label("الأقسام  ‹", 14, theme.accent, Typeface.BOLD);
+        back.setGravity(Gravity.CENTER);
+        back.setBackground(round(theme.control, 12, theme.border));
+        back.setOnClickListener(v -> { selectedAdhkarCategory = null; rebuildContent(); });
+        navigation.addView(back, new LinearLayout.LayoutParams(dp(104), dp(44)));
+        content.addView(navigation, fullWidthWithMargins(0, 0, 0, dp(10)));
+
+        TextView position = label((selectedAdhkarIndex + 1) + " من " + items.size(), 13, theme.secondaryText, Typeface.BOLD);
+        position.setGravity(Gravity.RIGHT);
+        content.addView(position, fullWidthWithMargins(dp(8), 0, dp(8), dp(8)));
+
+        LinearLayout card = vertical();
+        card.setGravity(Gravity.RIGHT);
+        card.setPadding(dp(18), dp(16), dp(18), dp(18));
+        card.setBackground(round(theme.panel, 18, theme.border));
+        TextView title = label(item.title, 21, theme.primaryText, Typeface.BOLD);
+        title.setGravity(Gravity.RIGHT);
+        card.addView(title, fullWidth());
+        TextView source = label(item.source, 12, theme.secondaryText, Typeface.BOLD);
+        source.setGravity(Gravity.RIGHT);
+        card.addView(source, fullWidthWithMargins(0, dp(4), 0, dp(12)));
+        View divider = new View(this);
+        divider.setBackgroundColor(theme.border);
+        card.addView(divider, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        TextView body = label(item.text, 24, theme.primaryText, Typeface.NORMAL);
+        body.setTypeface(strongTypeface());
+        body.setGravity(Gravity.RIGHT);
+        body.setTextDirection(View.TEXT_DIRECTION_RTL);
+        body.setTextAlignment(View.TEXT_ALIGNMENT_VIEW_END);
+        body.setLineSpacing(dp(7), 1f);
+        body.setPadding(0, dp(18), 0, dp(16));
+        card.addView(body, fullWidth());
+        if (item.note != null) {
+            TextView note = label(item.note, 13, theme.secondaryText, Typeface.BOLD);
+            note.setGravity(Gravity.RIGHT);
+            note.setBackground(round(theme.control, 10, theme.border));
+            note.setPadding(dp(12), dp(10), dp(12), dp(10));
+            card.addView(note, fullWidthWithMargins(0, 0, 0, dp(12)));
+        }
+
+        TextView counter = label(count >= item.target ? "تم بحمد الله ✓" : "اضغط للعدّ  •  " + count + " / " + item.target, 18, count >= item.target ? Color.WHITE : theme.primaryText, Typeface.BOLD);
+        counter.setGravity(Gravity.CENTER);
+        counter.setBackground(round(count >= item.target ? theme.accent : theme.activeRow, 16, theme.activeBorder));
+        counter.setOnClickListener(v -> {
+            int newCount = adhkarProgress.increment(item);
+            if (newCount >= item.target && selectedAdhkarIndex < items.size() - 1) selectedAdhkarIndex++;
+            rebuildContent();
+        });
+        card.addView(counter, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(58)));
+        content.addView(card, fullWidthWithMargins(0, 0, 0, dp(10)));
+
+        LinearLayout controls = new LinearLayout(this);
+        controls.setOrientation(LinearLayout.HORIZONTAL);
+        controls.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+        controls.setGravity(Gravity.CENTER);
+        controls.addView(readerControl("السابق", selectedAdhkarIndex > 0, () -> { selectedAdhkarIndex--; rebuildContent(); }), new LinearLayout.LayoutParams(0, dp(46), 1));
+        controls.addView(readerControl("تراجع", count > 0, () -> { adhkarProgress.decrement(item); rebuildContent(); }), new LinearLayout.LayoutParams(0, dp(46), 1));
+        controls.addView(readerControl("التالي", selectedAdhkarIndex < items.size() - 1, () -> { selectedAdhkarIndex++; rebuildContent(); }), new LinearLayout.LayoutParams(0, dp(46), 1));
+        content.addView(controls, fullWidth());
+        return content;
+    }
+
+    private View readerControl(String title, boolean enabled, Runnable action) {
+        TextView button = label(title, 14, enabled ? theme.primaryText : AppTheme.withAlpha(theme.secondaryText, 0.42), Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setBackground(round(theme.control, 12, theme.border));
+        if (enabled) button.setOnClickListener(v -> action.run());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, dp(46), 1);
+        params.setMargins(dp(3), 0, dp(3), 0);
+        button.setLayoutParams(params);
+        return button;
     }
 
     private View adhkarHeader() {
@@ -1446,7 +1764,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         }
         if (radioButton != null) {
             radioButton.setText(radioPlaying || radioLoading ? "■" : "▶");
-            radioButton.setTextSize(radioPlaying || radioLoading ? 32 : 42);
+            radioButton.setTextSize(scaledSp(radioPlaying || radioLoading ? 32 : 42));
         }
     }
 
@@ -1651,7 +1969,7 @@ public class MainActivity extends Activity implements SensorEventListener {
             canvas.drawRoundRect(makkahBubble, dp(18), dp(18), paint);
             paint.setColor(theme.accent);
             paint.setTextAlign(Paint.Align.CENTER);
-            paint.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+            paint.setTypeface(typefaceFor(Typeface.BOLD));
             paint.setTextSize(dp(18));
             canvas.drawText("مكة", cx, cy - radius * 0.52f + dp(7), paint);
 
@@ -1666,8 +1984,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         dock.setOrientation(LinearLayout.HORIZONTAL);
         dock.setLayoutDirection(View.LAYOUT_DIRECTION_LTR);
         dock.setGravity(Gravity.CENTER);
-        dock.setPadding(dp(8), dp(6), dp(8), dp(6));
-        dock.setBackground(round(theme.night ? Color.argb(146, 0, 0, 0) : Color.argb(238, 255, 255, 255), 28, theme.border));
+        dock.setPadding(dp(8), dp(4), dp(8), dp(4));
+        dock.setBackground(round(theme.night ? Color.argb(146, 0, 0, 0) : Color.argb(238, 255, 255, 255), 28, scheduleTopAccentBorder()));
         elevate(dock, 7);
         addDockButton(dock, Tab.RADIO);
         addDockButton(dock, Tab.QIBLA);
@@ -1681,7 +1999,7 @@ public class MainActivity extends Activity implements SensorEventListener {
         boolean selected = selectedTab == tab;
         LinearLayout item = vertical();
         item.setGravity(Gravity.CENTER);
-        item.setPadding(dp(2), dp(4), dp(2), dp(2));
+        item.setPadding(dp(2), dp(3), dp(2), dp(2));
         item.setBackground(round(selected ? theme.accent : Color.TRANSPARENT, selected ? 20 : 16, Color.TRANSPARENT));
         item.setOnClickListener(v -> {
             if (selectedTab == tab) {
@@ -1712,10 +2030,10 @@ public class MainActivity extends Activity implements SensorEventListener {
                     .start();
         }
 
-        ImageView icon = iconImage(tabIcon(tab), selected ? Color.WHITE : theme.secondaryText, selected ? 22 : 20);
+        ImageView icon = iconImage(tabIcon(tab), selected ? Color.WHITE : theme.secondaryText, selected ? 20 : 18);
         item.addView(icon, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
 
-        TextView title = label(tab.title, 9, selected ? Color.WHITE : theme.secondaryText, Typeface.BOLD);
+        TextView title = label(tab.title, 9, selected ? Color.WHITE : theme.secondaryText, selected ? Typeface.BOLD : Typeface.NORMAL);
         title.setGravity(Gravity.CENTER);
         title.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         title.setSingleLine(true);
@@ -1848,8 +2166,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         Button button = new Button(this);
         button.setAllCaps(false);
         button.setText(text);
-        button.setTextSize(12);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextSize(scaledSp(12));
+        button.setTypeface(typefaceFor(Typeface.BOLD));
         button.setTextColor(selected ? Color.WHITE : theme.primaryText);
         button.setBackground(round(selected ? theme.accent : theme.control, 8, selected ? theme.activeBorder : theme.border));
         button.setMinWidth(0);
@@ -1865,8 +2183,8 @@ public class MainActivity extends Activity implements SensorEventListener {
         Button button = new Button(this);
         button.setAllCaps(false);
         button.setText(text);
-        button.setTextSize(12);
-        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setTextSize(scaledSp(12));
+        button.setTypeface(typefaceFor(Typeface.BOLD));
         button.setTextColor(theme.primaryText);
         button.setBackground(round(theme.control, 8, theme.border));
         button.setMinWidth(0);
@@ -1891,14 +2209,58 @@ public class MainActivity extends Activity implements SensorEventListener {
     private TextView label(String text, int sp, int color, int style) {
         TextView view = new TextView(this);
         view.setText(text);
-        view.setTextSize(sp);
+        view.setTextSize(scaledSp(sp));
         view.setTextColor(color);
-        view.setTypeface(Typeface.DEFAULT, style);
+        view.setTypeface(typefaceFor(style));
         view.setGravity(Gravity.RIGHT);
         view.setTextDirection(View.TEXT_DIRECTION_RTL);
         view.setTextAlignment(View.TEXT_ALIGNMENT_GRAVITY);
         view.setIncludeFontPadding(true);
         return view;
+    }
+
+    private void loadAppTypeface() {
+        try {
+            appRegularTypeface = Typeface.createFromAsset(getAssets(), "fonts/NotoSansArabic.ttf");
+            appMediumTypeface = Typeface.create(appRegularTypeface, Typeface.NORMAL);
+            appStrongTypeface = Typeface.create(appRegularTypeface, Typeface.BOLD);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appMediumTypeface = new Typeface.Builder(getAssets(), "fonts/NotoSansArabic.ttf")
+                        .setFontVariationSettings("'wght' 560")
+                        .build();
+                appStrongTypeface = new Typeface.Builder(getAssets(), "fonts/NotoSansArabic.ttf")
+                        .setFontVariationSettings("'wght' 680")
+                        .build();
+            }
+        } catch (RuntimeException ignored) {
+            appRegularTypeface = null;
+            appMediumTypeface = null;
+            appStrongTypeface = null;
+        }
+    }
+
+    private float scaledSp(int sp) {
+        if (sp <= 1) {
+            return sp;
+        }
+        return Math.max(7.25f, sp * APP_FONT_SCALE);
+    }
+
+    private Typeface typefaceFor(int style) {
+        if (appRegularTypeface == null) {
+            return Typeface.create(Typeface.DEFAULT, style);
+        }
+        if (style == Typeface.BOLD) {
+            return appMediumTypeface == null ? Typeface.create(appRegularTypeface, Typeface.BOLD) : appMediumTypeface;
+        }
+        return appRegularTypeface;
+    }
+
+    private Typeface strongTypeface() {
+        if (appStrongTypeface != null) {
+            return appStrongTypeface;
+        }
+        return typefaceFor(Typeface.BOLD);
     }
 
     private ImageView iconImage(int resource, int color, int sizeDp) {
@@ -1931,6 +2293,16 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private GradientDrawable round(int color, int radiusDp, int strokeColor) {
         return AppTheme.rounded(color, dp(radiusDp), strokeColor);
+    }
+
+    private GradientDrawable round(int color, int radiusDp, int strokeColor, int strokeWidthDp) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(color);
+        drawable.setCornerRadius(dp(radiusDp));
+        if (Color.alpha(strokeColor) > 0 && strokeWidthDp > 0) {
+            drawable.setStroke(dp(strokeWidthDp), strokeColor);
+        }
+        return drawable;
     }
 
     private void elevate(View view, float value) {
@@ -2091,6 +2463,7 @@ public class MainActivity extends Activity implements SensorEventListener {
 
     private enum NotificationPane {
         ADHAN,
+        ADHKAR,
         THEMES
     }
 }

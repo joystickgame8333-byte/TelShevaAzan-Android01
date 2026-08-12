@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_panel_bg"
+    android:gravity="center"
+    android:layoutDirection="rtl"
+    android:orientation="horizontal"
+    android:padding="12dp">
+
+    <TextView android:id="@+id/path_fajr" style="@style/WidgetPathItem" />
+    <TextView android:id="@+id/path_dhuhr" style="@style/WidgetPathItem" />
+    <TextView android:id="@+id/path_asr" style="@style/WidgetPathItem" />
+    <TextView android:id="@+id/path_maghrib" style="@style/WidgetPathItem" />
+    <TextView android:id="@+id/path_isha" style="@style/WidgetPathItem" />
+</LinearLayout>

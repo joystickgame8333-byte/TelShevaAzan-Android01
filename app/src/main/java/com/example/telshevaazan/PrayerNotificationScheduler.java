@@ -15,6 +15,7 @@ import android.provider.Settings;
 
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
@@ -27,10 +28,13 @@ final class PrayerNotificationScheduler {
     static final String EXTRA_BODY = "body";
     static final String EXTRA_SOUND = "sound";
     static final String KIND_ADHAN = "adhan";
+    static final String KIND_IQAMA = "iqama";
     static final String KIND_NAFAHAT = "nafahat";
     static final String CHANNEL_ADHAN = "salati_prayers_jazi";
     static final String CHANNEL_NAFAHAT = "salati_adhkar_sound";
+    static final String CHANNEL_IQAMA = "salati_iqama_silent_v1";
     private static final int MAX_PENDING = 60;
+    private static final int REQUEST_CODE_START = 42000;
 
     private PrayerNotificationScheduler() {}
 
@@ -59,7 +63,7 @@ final class PrayerNotificationScheduler {
 
             PendingIntent pendingIntent = PendingIntent.getBroadcast(
                     context,
-                    event.requestCode,
+                    REQUEST_CODE_START + i,
                     intent,
                     PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
             );
@@ -74,7 +78,7 @@ final class PrayerNotificationScheduler {
         if (alarmManager == null) {
             return;
         }
-        for (int requestCode = 42000; requestCode < 42180; requestCode++) {
+        for (int requestCode = REQUEST_CODE_START; requestCode < REQUEST_CODE_START + MAX_PENDING; requestCode++) {
             Intent intent = new Intent(context, PrayerNotificationReceiver.class);
             intent.setAction(ACTION_NOTIFY);
             PendingIntent pendingIntent = PendingIntent.getBroadcast(
@@ -129,7 +133,8 @@ final class PrayerNotificationScheduler {
 
     static void ensureChannels(Context context) {
         ensureChannel(context, KIND_ADHAN, SalatiSettings.adhanSound(context));
-        ensureChannel(context, KIND_NAFAHAT, SalatiSettings.nafahatSound(context));
+        ensureChannel(context, KIND_IQAMA, null);
+        ensureChannel(context, KIND_NAFAHAT, null);
     }
 
     static void ensureChannel(Context context, String kind, String sound) {
@@ -142,16 +147,17 @@ final class PrayerNotificationScheduler {
             return;
         }
 
-        if (KIND_NAFAHAT.equals(kind)) {
-            String resolvedSound = sound == null ? SalatiSettings.SOUND_NAFAHAT_1 : sound;
-            AudioAttributes nafahatAttributes = new AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build();
-            NotificationChannel nafahat = new NotificationChannel(channelId(kind, resolvedSound), "أذكار ونفحات", NotificationManager.IMPORTANCE_DEFAULT);
-            nafahat.setDescription("تذكير روحي خفيف خلال اليوم");
-            nafahat.setSound(soundUri(context, resolvedSound), nafahatAttributes);
-            manager.createNotificationChannel(nafahat);
+        if (KIND_NAFAHAT.equals(kind) || KIND_IQAMA.equals(kind)) {
+            boolean iqama = KIND_IQAMA.equals(kind);
+            NotificationChannel silent = new NotificationChannel(
+                    channelId(kind, null),
+                    iqama ? "تنبيهات الإقامة" : "تذكيرات الأذكار",
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            silent.setDescription(iqama ? "تنبيه صامت عند إقامة الصلاة" : "تذكير روحي صامت خلال اليوم");
+            silent.setSound(null, null);
+            silent.enableVibration(true);
+            manager.createNotificationChannel(silent);
             return;
         }
 
@@ -168,8 +174,10 @@ final class PrayerNotificationScheduler {
 
     static String channelId(String kind, String sound) {
         if (KIND_NAFAHAT.equals(kind)) {
-            String resolvedSound = sound == null ? SalatiSettings.SOUND_NAFAHAT_1 : sound;
-            return CHANNEL_NAFAHAT + "_" + resolvedSound.replaceAll("[^a-zA-Z0-9_]", "_");
+            return CHANNEL_NAFAHAT + "_silent_v2";
+        }
+        if (KIND_IQAMA.equals(kind)) {
+            return CHANNEL_IQAMA;
         }
         String resolvedSound = sound == null ? SalatiSettings.SOUND_ADHAN : sound;
         return CHANNEL_ADHAN + "_" + resolvedSound.replaceAll("[^a-zA-Z0-9_]", "_");
@@ -192,7 +200,9 @@ final class PrayerNotificationScheduler {
         List<Event> events = new ArrayList<>();
         if (SalatiSettings.adhanEnabled(context)) {
             Set<String> enabledPrayerIDs = SalatiSettings.enabledPrayerIDs(context);
-            for (String dateKey : PrayerEngine.availableDateKeys()) {
+            // A rolling window keeps alarms valid across months and years. The
+            // receiver schedules the next window again after every delivered event.
+            for (String dateKey : PrayerEngine.upcomingDateKeys(now, 60)) {
                 DaySchedule schedule = PrayerEngine.schedule(dateKey);
                 for (PrayerKey key : PrayerEngine.PRAYER_ORDER) {
                     if (!enabledPrayerIDs.contains(key.rawValue)) {
@@ -206,11 +216,15 @@ final class PrayerNotificationScheduler {
                     if (prayer.date.after(now)) {
                         events.add(Event.adhan(prayer, SalatiSettings.adhanSound(context)));
                     }
+                    Date iqamaDate = PrayerEngine.iqamaDate(prayer);
+                    if (SalatiSettings.iqamaEnabled(context) && iqamaDate.after(now)) {
+                        events.add(Event.iqama(prayer, iqamaDate));
+                    }
                 }
             }
         }
         events.addAll(nafahatEvents(context, now));
-        events.sort((left, right) -> left.when.compareTo(right.when));
+        Collections.sort(events, (left, right) -> left.when.compareTo(right.when));
         return events;
     }
 
@@ -222,7 +236,6 @@ final class PrayerNotificationScheduler {
 
         int interval = SalatiSettings.nafahatInterval(context);
         String textType = SalatiSettings.nafahatText(context);
-        String sound = SalatiSettings.nafahatSound(context);
         Calendar calendar = Calendar.getInstance(PrayerEngine.TIME_ZONE);
         calendar.setTime(now);
         calendar.add(Calendar.MINUTE, interval);
@@ -232,7 +245,7 @@ final class PrayerNotificationScheduler {
         while (calendar.getTime().before(end) && events.size() < 24) {
             Date date = calendar.getTime();
             if (!isWithinQuietWindow(context, date) && !isNearPrayerTime(date)) {
-                events.add(Event.nafahat(date, NafahatContent.message(textType, index, date), sound));
+                events.add(Event.nafahat(date, NafahatContent.message(textType, index, date)));
                 index++;
             }
             calendar.add(Calendar.MINUTE, interval);
@@ -276,15 +289,13 @@ final class PrayerNotificationScheduler {
         final String body;
         final String sound;
         final Date when;
-        final int requestCode;
 
-        Event(String kind, String title, String body, String sound, Date when, int requestCode) {
+        Event(String kind, String title, String body, String sound, Date when) {
             this.kind = kind;
             this.title = title;
             this.body = body;
             this.sound = sound;
             this.when = when;
-            this.requestCode = requestCode;
         }
 
         static Event adhan(PrayerTime prayer, String sound) {
@@ -293,19 +304,27 @@ final class PrayerNotificationScheduler {
                     "حان وقت صلاة " + prayer.title,
                     "صلاتي • " + prayer.time,
                     sound,
-                    prayer.date,
-                    42000 + Math.abs((PrayerEngine.calendarIdentifier(prayer.date) + prayer.key.rawValue).hashCode() % 160)
+                    prayer.date
             );
         }
 
-        static Event nafahat(Date date, NafahatContent.Message message, String sound) {
+        static Event iqama(PrayerTime prayer, Date when) {
+            return new Event(
+                    KIND_IQAMA,
+                    "الآن تُقام صلاة " + prayer.title,
+                    "حي على الصلاة • تل السبع",
+                    null,
+                    when
+            );
+        }
+
+        static Event nafahat(Date date, NafahatContent.Message message) {
             return new Event(
                     KIND_NAFAHAT,
                     message.title,
                     message.body,
-                    sound,
-                    date,
-                    42160 + Math.abs(PrayerEngine.calendarIdentifier(date).hashCode() % 20)
+                    null,
+                    date
             );
         }
     }

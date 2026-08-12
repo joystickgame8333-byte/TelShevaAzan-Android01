@@ -29,13 +29,15 @@ final class SalatiWidgetUpdater {
         updateProvider(context, manager, IqamaMinutesCircleWidgetProvider.class, KIND_IQAMA_MINUTES);
         updateProvider(context, manager, IqamaTimeCircleWidgetProvider.class, KIND_IQAMA_TIME);
         updateProvider(context, manager, SunriseCircleWidgetProvider.class, KIND_SUNRISE);
+        updateTodayProvider(context, manager);
+        updatePathProvider(context, manager);
         scheduleNextMinute(context);
     }
 
     static void updateNextPrayer(Context context, AppWidgetManager manager, int[] ids) {
         Date now = new Date();
-        String dateKey = PrayerEngine.defaultDateKey(now);
-        PrayerTime next = PrayerEngine.nextPrayer(dateKey, now);
+        String todayKey = PrayerEngine.defaultDateKey(now);
+        PrayerTime next = PrayerEngine.nextPrayer(todayKey, now);
         for (int id : ids) {
             RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_prayer_medium);
             if (next != null) {
@@ -50,9 +52,10 @@ final class SalatiWidgetUpdater {
 
     static void updateCircle(Context context, AppWidgetManager manager, int[] ids, String kind) {
         Date now = new Date();
-        String dateKey = PrayerEngine.defaultDateKey(now);
-        DaySchedule schedule = PrayerEngine.schedule(dateKey);
-        PrayerTime next = PrayerEngine.nextPrayer(dateKey, now);
+        String todayKey = PrayerEngine.defaultDateKey(now);
+        String displayDateKey = PrayerEngine.automaticScheduleDateKey(now);
+        DaySchedule schedule = PrayerEngine.schedule(displayDateKey);
+        PrayerTime next = PrayerEngine.nextPrayer(todayKey, now);
         PrayerTime fajr = find(schedule, PrayerKey.FAJR);
         PrayerTime sunrise = find(schedule, PrayerKey.SUNRISE);
         for (int id : ids) {
@@ -68,6 +71,36 @@ final class SalatiWidgetUpdater {
             } else if (KIND_SUNRISE.equals(kind) && sunrise != null) {
                 setCircle(views, "الشروق", sunrise.time, "تل السبع");
             }
+            manager.updateAppWidget(id, views);
+        }
+    }
+
+    static void updateTodayPrayers(Context context, AppWidgetManager manager, int[] ids) {
+        DaySchedule schedule = PrayerEngine.schedule(PrayerEngine.automaticScheduleDateKey(new Date()));
+        for (int id : ids) {
+            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today_prayers);
+            views.setTextViewText(R.id.widget_today_date, PrayerEngine.longDateLabel(schedule.dateKey));
+            setPrayerLine(views, R.id.widget_today_fajr, schedule, PrayerKey.FAJR);
+            setPrayerLine(views, R.id.widget_today_dhuhr, schedule, PrayerKey.DHUHR);
+            setPrayerLine(views, R.id.widget_today_asr, schedule, PrayerKey.ASR);
+            setPrayerLine(views, R.id.widget_today_maghrib, schedule, PrayerKey.MAGHRIB);
+            setPrayerLine(views, R.id.widget_today_isha, schedule, PrayerKey.ISHA);
+            manager.updateAppWidget(id, views);
+        }
+    }
+
+    static void updatePrayerPath(Context context, AppWidgetManager manager, int[] ids) {
+        Date now = new Date();
+        String displayKey = PrayerEngine.automaticScheduleDateKey(now);
+        DaySchedule schedule = PrayerEngine.schedule(displayKey);
+        PrayerTime next = PrayerEngine.nextPrayer(displayKey, now);
+        for (int id : ids) {
+            RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_prayer_path);
+            setPathLine(views, R.id.path_fajr, schedule, PrayerKey.FAJR, next);
+            setPathLine(views, R.id.path_dhuhr, schedule, PrayerKey.DHUHR, next);
+            setPathLine(views, R.id.path_asr, schedule, PrayerKey.ASR, next);
+            setPathLine(views, R.id.path_maghrib, schedule, PrayerKey.MAGHRIB, next);
+            setPathLine(views, R.id.path_isha, schedule, PrayerKey.ISHA, next);
             manager.updateAppWidget(id, views);
         }
     }
@@ -109,6 +142,28 @@ final class SalatiWidgetUpdater {
         } else {
             updateCircle(context, manager, ids, kind);
         }
+    }
+
+    private static void updateTodayProvider(Context context, AppWidgetManager manager) {
+        int[] ids = manager.getAppWidgetIds(new ComponentName(context, TodayPrayerWidgetProvider.class));
+        if (ids != null && ids.length > 0) updateTodayPrayers(context, manager, ids);
+    }
+
+    private static void updatePathProvider(Context context, AppWidgetManager manager) {
+        int[] ids = manager.getAppWidgetIds(new ComponentName(context, PrayerPathWidgetProvider.class));
+        if (ids != null && ids.length > 0) updatePrayerPath(context, manager, ids);
+    }
+
+    private static void setPrayerLine(RemoteViews views, int viewId, DaySchedule schedule, PrayerKey key) {
+        String time = schedule.times.get(key);
+        views.setTextViewText(viewId, key.title + "   " + (time == null ? "--:--" : time));
+    }
+
+    private static void setPathLine(RemoteViews views, int viewId, DaySchedule schedule, PrayerKey key, PrayerTime next) {
+        String time = schedule.times.get(key);
+        boolean active = next != null && next.key == key;
+        views.setTextViewText(viewId, (active ? "● " : "") + key.title + "\n" + (time == null ? "--:--" : time));
+        views.setTextColor(viewId, active ? 0xFF168CFF : 0xFFFFFFFF);
     }
 
     private static PrayerTime find(DaySchedule schedule, PrayerKey key) {
